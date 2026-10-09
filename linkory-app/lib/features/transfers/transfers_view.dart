@@ -54,6 +54,21 @@ class TransfersView extends ConsumerWidget {
             onPressed: all.any((t) => !t.active) ? () => ref.read(storeProvider.notifier).clearFinishedTransfers() : null),
         LIconButton(icon: LucideIcons.refreshCw, tooltip: '刷新', onPressed: () => ref.read(storeProvider.notifier).loadTransfers()),
       ]),
+      if (isNarrow(context))
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: Row(children: [
+            for (final x in TransferFilter.values) ...[
+              LButton(
+                  label: x.label,
+                  compact: true,
+                  variant: x == f ? BtnVariant.solid : BtnVariant.neutral,
+                  onPressed: () => ref.read(transferFilterProvider.notifier).set(x)),
+              const SizedBox(width: 6),
+            ],
+          ]),
+        ),
       Expanded(
         child: list.isEmpty
             ? Center(child: Text('暂无传输任务', style: Type.body.copyWith(color: c.text3)))

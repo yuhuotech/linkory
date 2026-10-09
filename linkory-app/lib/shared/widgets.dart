@@ -333,11 +333,17 @@ class PageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
+    // Pushed detail pages on narrow screens get a back button.
+    final back = isNarrow(context) && (ModalRoute.of(context)?.canPop ?? false);
     return DragArea(child: Container(
       height: 52,
-      padding: const EdgeInsets.only(left: 24, right: 16),
+      padding: EdgeInsets.only(left: back ? 8 : 24, right: 16),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.border))),
       child: Row(children: [
+        if (back) ...[
+          LIconButton(icon: LucideIcons.chevronLeft, tooltip: '返回', size: 32, iconSize: 20, onPressed: () => Navigator.maybePop(context)),
+          const SizedBox(width: 4),
+        ],
         if (leading != null) ...[leading!, const SizedBox(width: 10)],
         Expanded(
           child: Row(children: [
@@ -442,12 +448,21 @@ class ConfirmDialog extends StatelessWidget {
       );
 }
 
+/// Below this width the three columns collapse to one (phones / narrow windows).
+const narrowBreakpoint = 720.0;
+
+bool isNarrow(BuildContext context) => MediaQuery.sizeOf(context).width < narrowBreakpoint;
+
 /// Window drag handle for the hidden title bar (desktop only).
 class DragArea extends StatelessWidget {
   const DragArea({super.key, required this.child});
   final Widget child;
   @override
-  Widget build(BuildContext context) => isDesktop ? DragToMoveArea(child: child) : child;
+  // No onDoubleTap here on purpose: a double-tap recognizer on an ancestor delays every button
+  // inside by ~300ms while it waits for a possible second tap.
+  Widget build(BuildContext context) => isDesktop
+      ? GestureDetector(behavior: HitTestBehavior.translucent, onPanStart: (_) => windowManager.startDragging(), child: child)
+      : child;
 }
 
 /// Toggle: 36x20 track, orange when on (cc-switch Switch).

@@ -33,6 +33,7 @@ class Shell extends ConsumerWidget {
         ref.read(storeProvider.notifier).clearError();
       }
     });
+    if (isNarrow(context)) return _NarrowShell(st: st);
     return Scaffold(
       backgroundColor: c.bgApp,
       body: Row(children: [
@@ -42,6 +43,92 @@ class Shell extends ConsumerWidget {
         _VLine(c.border),
         Expanded(child: _Content(st: st)),
       ]),
+    );
+  }
+}
+
+// ---- narrow (phone) layout: one page at a time + bottom navigation ---------------------------
+
+class _NarrowShell extends ConsumerWidget {
+  const _NarrowShell({required this.st});
+  final AppState st;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.c;
+    return Scaffold(
+      backgroundColor: c.bgApp,
+      body: SafeArea(
+        bottom: false,
+        child: switch (st.section) {
+          Section.transfers => const TransfersView(),
+          _ => const _ListColumn(),
+        },
+      ),
+      bottomNavigationBar: const _BottomNav(),
+    );
+  }
+}
+
+/// Pushed detail page (chat / device / setting) on narrow screens.
+class DetailPage extends StatelessWidget {
+  const DetailPage({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => Scaffold(backgroundColor: context.c.bgApp, body: SafeArea(child: child));
+}
+
+class _BottomNav extends ConsumerWidget {
+  const _BottomNav();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.c;
+    final st = ref.watch(storeProvider);
+    final store = ref.read(storeProvider.notifier);
+    final active = st.transfers.where((t) => t.active).length;
+    Widget item(Section s, IconData icon, String label, {int badge = 0}) {
+      final sel = st.section == s;
+      return Expanded(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => store.setSection(s),
+          child: SizedBox(
+            height: 52,
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Stack(clipBehavior: Clip.none, children: [
+                Icon(icon, size: 20, color: sel ? c.actionText : c.text2),
+                if (badge > 0)
+                  Positioned(
+                    right: -8,
+                    top: -4,
+                    child: Container(
+                      height: 14,
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(color: c.action, borderRadius: BorderRadius.circular(7)),
+                      alignment: Alignment.center,
+                      child: Text('$badge', style: Type.badge.copyWith(color: c.actionFg, fontSize: 10, height: 1)),
+                    ),
+                  ),
+              ]),
+              const SizedBox(height: 3),
+              Text(label, style: Type.badge.copyWith(color: sel ? c.actionText : c.text2, fontWeight: sel ? FontWeight.w600 : FontWeight.w500)),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(color: c.bgSidebar, border: Border(top: BorderSide(color: c.border))),
+      child: SafeArea(
+        top: false,
+        child: Row(children: [
+          item(Section.chats, LucideIcons.messageSquare, '会话'),
+          item(Section.devices, LucideIcons.laptop, '设备'),
+          item(Section.transfers, LucideIcons.arrowLeftRight, '传输', badge: active),
+          item(Section.settings, LucideIcons.settings, '设置'),
+        ]),
+      ),
     );
   }
 }
@@ -295,7 +382,17 @@ class _PeerList extends ConsumerWidget {
           child: HoverRow(
             selected: selected,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            onTap: () => forChat ? store.selectPeer(d.id) : ref.read(_devicePick.notifier).set(d.id),
+            onTap: () {
+              if (forChat) {
+                store.selectPeer(d.id);
+              } else {
+                ref.read(_devicePick.notifier).set(d.id);
+              }
+              if (isNarrow(context)) {
+                Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) => DetailPage(child: forChat ? ChatView(key: ValueKey(d.id), peerId: d.id) : DevicesView(deviceId: d.id))));
+              }
+            },
             child: Row(children: [
               DeviceGlyph(type: d.type, online: online),
               const SizedBox(width: 12),
@@ -370,7 +467,12 @@ class _SettingsList extends ConsumerWidget {
           child: HoverRow(
             selected: cur == t,
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            onTap: () => ref.read(settingsTabProvider.notifier).set(t),
+            onTap: () {
+              ref.read(settingsTabProvider.notifier).set(t);
+              if (isNarrow(context)) {
+                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DetailPage(child: SettingsView())));
+              }
+            },
             child: SizedBox(
               height: 28,
               child: Row(children: [

@@ -8,8 +8,9 @@ import 'package:linkory_app/core/store.dart';
 
 import 'support.dart';
 
-Future<void> pumpApp(WidgetTester t, AppState s, {Brightness b = Brightness.light, AuthStatus auth = AuthStatus.loggedIn}) async {
-  t.view.physicalSize = const Size(1200, 780);
+Future<void> pumpApp(WidgetTester t, AppState s,
+    {Brightness b = Brightness.light, AuthStatus auth = AuthStatus.loggedIn, Size size = const Size(1200, 780)}) async {
+  t.view.physicalSize = size;
   t.view.devicePixelRatio = 1;
   t.platformDispatcher.platformBrightnessTestValue = b;
   addTearDown(t.view.reset);
@@ -61,5 +62,28 @@ void main() {
     await t.pump();
     final c = ProviderScope.containerOf(t.element(find.byType(LinkoryApp)));
     expect((c.read(storeProvider.notifier) as FakeStore).sent, ['hello']);
+  });
+
+  testWidgets('narrow: single column with bottom nav, detail pages push', (t) async {
+    await pumpApp(t, fixtureState(peer: null), size: const Size(390, 844));
+    expect(find.text('办公室 Windows'), findsOneWidget);
+    expect(find.text('会话'), findsOneWidget); // bottom navigation
+    expect(find.byType(TextField), findsOneWidget); // list search only, no chat composer
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/narrow_list_light.png'));
+
+    await t.tap(find.text('办公室 Windows'));
+    await t.pumpAndSettle();
+    expect(find.text('文件我放在共享盘了，你看一下'), findsOneWidget);
+    expect(find.byTooltip('返回'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/narrow_chat_light.png'));
+
+    await t.tap(find.byTooltip('返回'));
+    await t.pumpAndSettle();
+    expect(find.text('会话'), findsOneWidget);
+
+    await t.tap(find.text('传输'));
+    await t.pumpAndSettle();
+    expect(find.text('季度报表-final.xlsx'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/narrow_transfers_light.png'));
   });
 }
