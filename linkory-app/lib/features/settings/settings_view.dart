@@ -110,7 +110,7 @@ class SettingsView extends ConsumerWidget {
             ]),
           ),
           if (isDesktop) ...[
-            item('关闭窗口时', _Toggle(label: '最小化到托盘，继续接收消息', get: () async => DesktopShell.instance?.closeToTray ?? true, set: (v) async => DesktopShell.instance?.setCloseToTray(v))),
+            item('关闭窗口时', _Toggle(label: '最小化到托盘，继续接收消息', get: () async => DesktopShell.instance?.closeToTray ?? DesktopShell.defaultCloseToTray, set: (v) async => DesktopShell.instance?.setCloseToTray(v))),
             item('开机启动', _Toggle(label: '登录系统后自动启动', get: DesktopShell.autostartEnabled, set: DesktopShell.setAutostart)),
           ],
           if (Log.dir != null) item('日志目录', Row(children: [

@@ -8,6 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+/// Windows and Linux draw their own minimise/maximise/close buttons (the title bar is hidden for a
+/// cleaner look); macOS keeps its native traffic lights.
+bool get hasCustomWindowControls => isDesktop && !Platform.isMacOS;
+
 bool get isDesktop => !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
 
 /// Window, tray, notifications and launch-at-login (PRD 4.10). Desktop only.
@@ -17,8 +21,11 @@ class DesktopShell with TrayListener, WindowListener {
 
   static DesktopShell? instance;
 
-  /// Closing the window hides it to the tray instead of quitting (default on).
-  bool get closeToTray => _prefs.getBool('close_to_tray') ?? true;
+  /// Closing the window hides it to the tray instead of quitting. On by default on macOS/Windows;
+  /// off on Linux, where GNOME shows no tray icon without an extension and a hidden window could
+  /// not be brought back.
+  bool get closeToTray => _prefs.getBool('close_to_tray') ?? defaultCloseToTray;
+  static bool get defaultCloseToTray => !Platform.isLinux;
   Future<void> setCloseToTray(bool v) => _prefs.setBool('close_to_tray', v);
 
   static Future<DesktopShell?> init(SharedPreferences prefs) async {

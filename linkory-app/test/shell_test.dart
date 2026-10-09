@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:linkory_app/app/app.dart';
 import 'package:linkory_app/core/session.dart';
 import 'package:linkory_app/core/store.dart';
+import 'package:linkory_app/shared/widgets.dart' show debugShowWindowControls;
 
 import 'support.dart';
 
@@ -108,6 +109,20 @@ void main() {
     await t.pumpAndSettle();
     expect(find.textContaining('自动接收'), findsWidgets);
     expect(c.read(storeProvider).autoAccept, isTrue);
+  });
+
+  testWidgets('frameless window (Windows/Linux): minimise / maximise / close sit in the page header', (t) async {
+    debugShowWindowControls = true;
+    addTearDown(() => debugShowWindowControls = false);
+    await pumpApp(t, fixtureState());
+    expect(find.byTooltip('最小化'), findsOneWidget);
+    expect(find.byTooltip('最大化'), findsOneWidget);
+    expect(find.byTooltip('关闭'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/chat_window_controls_light.png'));
+    // macOS keeps the native traffic lights, so none of this renders there.
+    debugShowWindowControls = false;
+    await pumpApp(t, fixtureState());
+    expect(find.byTooltip('最小化'), findsNothing);
   });
 
   testWidgets('composer sends on Enter', (t) async {

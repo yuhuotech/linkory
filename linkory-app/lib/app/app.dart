@@ -1,6 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:window_manager/window_manager.dart';
+
+import '../core/desktop.dart';
 import '../core/session.dart';
 import '../core/store.dart';
 import '../features/shell/shell.dart';
@@ -21,6 +26,10 @@ class LinkoryApp extends ConsumerWidget {
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
       // Signing in is optional: the full UI is always available, it just is not connected.
+      // Frameless window on Linux has no native resize borders: add invisible edge handles.
+      builder: (context, child) => (isDesktop && Platform.isLinux)
+          ? DragToResizeArea(child: child!)
+          : child!,
       home: const _Root(),
     );
   }

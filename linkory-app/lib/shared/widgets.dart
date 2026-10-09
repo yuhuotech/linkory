@@ -355,6 +355,12 @@ class PageHeader extends StatelessWidget {
           ]),
         ),
         for (final a in actions) ...[const SizedBox(width: 8), a],
+        if (hasCustomWindowControls || debugShowWindowControls) ...[
+          const SizedBox(width: 10),
+          Container(width: 1, height: 16, color: c.border),
+          const SizedBox(width: 8),
+          const WindowControls(),
+        ],
       ]),
     ));
   }
@@ -453,16 +459,133 @@ const narrowBreakpoint = 720.0;
 
 bool isNarrow(BuildContext context) => MediaQuery.sizeOf(context).width < narrowBreakpoint;
 
-/// Window drag handle for the hidden title bar (desktop only).
-class DragArea extends StatelessWidget {
+/// Window drag handle for the hidden title bar (desktop only). Double-click toggles maximise on
+/// Windows/Linux. Taps are never delayed: the double-click is detected from raw pointer events,
+/// not a double-tap recognizer (an ancestor recognizer would make every inner button wait ~300ms).
+class DragArea extends StatefulWidget {
   const DragArea({super.key, required this.child});
   final Widget child;
   @override
-  // No onDoubleTap here on purpose: a double-tap recognizer on an ancestor delays every button
-  // inside by ~300ms while it waits for a possible second tap.
-  Widget build(BuildContext context) => isDesktop
-      ? GestureDetector(behavior: HitTestBehavior.translucent, onPanStart: (_) => windowManager.startDragging(), child: child)
-      : child;
+  State<DragArea> createState() => _DragAreaState();
+}
+
+class _DragAreaState extends State<DragArea> {
+  DateTime _lastDown = DateTime.fromMillisecondsSinceEpoch(0);
+  Offset _lastPos = Offset.zero;
+
+  void _down(PointerDownEvent e) {
+    if (!hasCustomWindowControls) return;
+    final now = DateTime.now();
+    if (now.difference(_lastDown) < const Duration(milliseconds: 350) && (e.position - _lastPos).distance < 8) {
+      _lastDown = DateTime.fromMillisecondsSinceEpoch(0);
+      _toggleMaximize();
+    } else {
+      _lastDown = now;
+      _lastPos = e.position;
+    }
+  }
+
+  Future<void> _toggleMaximize() async => await windowManager.isMaximized() ? windowManager.unmaximize() : windowManager.maximize();
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isDesktop) return widget.child;
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _down,
+      child: GestureDetector(behavior: HitTestBehavior.translucent, onPanStart: (_) => windowManager.startDragging(), child: widget.child),
+    );
+  }
+}
+
+/// Test hook: show the custom window buttons even on the macOS test host.
+bool debugShowWindowControls = false;
+
+/// Minimise / maximise-restore / close for the frameless window (Windows, Linux).
+class WindowControls extends StatefulWidget {
+  const WindowControls({super.key});
+  @override
+  State<WindowControls> createState() => _WindowControlsState();
+}
+
+class _WindowControlsState extends State<WindowControls> with WindowListener {
+  bool _maximized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!debugShowWindowControls) {
+      windowManager.addListener(this);
+      windowManager.isMaximized().then((v) => mounted ? setState(() => _maximized = v) : null);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (!debugShowWindowControls) windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowMaximize() => setState(() => _maximized = true);
+  @override
+  void onWindowUnmaximize() => setState(() => _maximized = false);
+  @override
+  void onWindowEnterFullScreen() => setState(() => _maximized = true);
+  @override
+  void onWindowLeaveFullScreen() => setState(() => _maximized = false);
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        _WinBtn(icon: LucideIcons.minus, tooltip: '最小化', onTap: () => windowManager.minimize()),
+        _WinBtn(
+            icon: _maximized ? LucideIcons.copy : LucideIcons.square,
+            tooltip: _maximized ? '还原' : '最大化',
+            iconSize: _maximized ? 13 : 12,
+            onTap: () async => await windowManager.isMaximized() ? windowManager.unmaximize() : windowManager.maximize()),
+        _WinBtn(icon: LucideIcons.x, tooltip: '关闭', danger: true, onTap: () => windowManager.close()),
+      ]);
+}
+
+class _WinBtn extends StatefulWidget {
+  const _WinBtn({required this.icon, required this.tooltip, required this.onTap, this.danger = false, this.iconSize = 15});
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool danger;
+  final double iconSize;
+  @override
+  State<_WinBtn> createState() => _WinBtnState();
+}
+
+class _WinBtnState extends State<_WinBtn> {
+  bool _hover = false;
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: Container(
+            width: 32,
+            height: 28,
+            margin: const EdgeInsets.only(left: 2),
+            decoration: BoxDecoration(
+              color: _hover ? (widget.danger ? c.dangerSoft : c.bgSubtle) : Colors.transparent,
+              borderRadius: BorderRadius.circular(Radii.control),
+            ),
+            child: Icon(widget.icon, size: widget.iconSize, color: _hover && widget.danger ? c.dangerText : (_hover ? c.text1 : c.text2)),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Toggle: 36x20 track, orange when on (cc-switch Switch).
