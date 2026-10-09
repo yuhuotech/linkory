@@ -16,7 +16,7 @@ This file provides guidance to AI coding agents (Claude Code, Codex, etc.) when 
 
 ```sh
 make server-test     # go vet + go test ./...，自动 source linkory-server/.env.local
-make server-run      # 用 .env.local 启动服务端
+make server-run      # 用 .env.local 启动服务端；端口上已有 linkory-server 会先优雅退出再重启，被其他程序占用则报错退出（tools/server_run.sh）
 # 单个服务端测试
 cd linkory-server && set -a && . ./.env.local && set +a && go test ./internal/httpapi -run TestName -v
 
