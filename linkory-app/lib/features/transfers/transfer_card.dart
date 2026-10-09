@@ -11,6 +11,7 @@ import '../../shared/file_kind.dart';
 import '../../shared/format.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
+import '../chat/image_viewer.dart';
 
 String statusLabel(Transfer t) => switch (t.status) {
   'WAITING_ACCEPT' => '等待对方确认',
@@ -136,32 +137,21 @@ class TransferCard extends ConsumerWidget {
     final kind = fileKindOf(task.fileName);
     final (tileBg, tileFg) = kind.tones(c);
     final path = store.fileOf(task);
-    // Images show a thumbnail once the file is on disk (sent: the source; received: when complete).
-    final thumb =
-        kind == FileKind.image &&
-            path != null &&
-            (!incoming || ok) &&
-            File(path).existsSync()
+    // Images get a preview above the details once the file is on disk (sent: the source file;
+    // received: when complete). Clicking it opens the full-size viewer.
+    final previewPath =
+        kind == FileKind.image && path != null && (!incoming || ok)
         ? path
         : null;
     final tile = Container(
       width: 44,
       height: 44,
-      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: tileBg,
         borderRadius: BorderRadius.circular(Radii.panel),
         border: Border.all(color: c.border),
       ),
-      child: thumb == null
-          ? Icon(kind.icon, size: 22, color: tileFg)
-          : Image.file(
-              File(thumb),
-              fit: BoxFit.cover,
-              cacheWidth: 132,
-              errorBuilder: (_, _, _) =>
-                  Icon(kind.icon, size: 22, color: tileFg),
-            ),
+      child: Icon(kind.icon, size: 22, color: tileFg),
     );
 
     Widget actionRow() => Row(
@@ -184,6 +174,17 @@ class TransferCard extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (previewPath != null)
+                ImagePreview(
+                  path: previewPath,
+                  onTap: () => showImageViewer(
+                    context,
+                    path: previewPath,
+                    name: task.fileName,
+                    onOpen: store.canOpenFiles ? () => store.openFile(task) : null,
+                    onReveal: store.canOpenFiles ? () => store.revealFile(task) : null,
+                  ),
+                ),
               Row(
                 children: [
                   tile,
@@ -217,7 +218,9 @@ class TransferCard extends ConsumerWidget {
                                 Flexible(
                                   child: Text(
                                     '${fmtBytes(task.size)}${showPeer ? ' · ${incoming ? '来自' : '发往'} $peer' : ''}',
-                                    style: Type.caption.copyWith(color: c.text2),
+                                    style: Type.caption.copyWith(
+                                      color: c.text2,
+                                    ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -267,6 +270,99 @@ class TransferCard extends ConsumerWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Inline preview of an image file: cropped to 16:10, decoded at preview size only, lazy (the list only
+/// builds what is on screen). Renders nothing if the file is gone or not a decodable image.
+class ImagePreview extends StatefulWidget {
+  const ImagePreview({super.key, required this.path, required this.onTap});
+  final String path;
+  final VoidCallback onTap;
+  @override
+  State<ImagePreview> createState() => _ImagePreviewState();
+}
+
+class _ImagePreviewState extends State<ImagePreview> {
+  bool? _exists; // checked once off the build path (no synchronous disk access while scrolling)
+  bool _failed = false, _hover = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _probe();
+  }
+
+  @override
+  void didUpdateWidget(ImagePreview old) {
+    super.didUpdateWidget(old);
+    if (old.path != widget.path) {
+      _exists = null;
+      _failed = false;
+      _probe();
+    }
+  }
+
+  Future<void> _probe() async {
+    final ok = await File(widget.path).exists();
+    if (mounted) setState(() => _exists = ok);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_exists != true || _failed) return const SizedBox.shrink();
+    final c = context.c;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(Radii.control),
+            child: AspectRatio(
+              aspectRatio: 16 / 10,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColoredBox(color: c.bgSubtle),
+                  Image.file(
+                    File(widget.path),
+                    fit: BoxFit.cover,
+                    cacheWidth: 640, // ≈ 2× the card width: sharp on HiDPI, tiny in memory
+                    gaplessPlayback: true,
+                  // Large photos decode off the UI thread; fade in when ready instead of popping.
+                  frameBuilder: (_, child, frame, sync) => sync ? child : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 160), child: child),
+                    errorBuilder: (_, _, _) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) setState(() => _failed = true);
+                      });
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                  AnimatedOpacity(
+                    opacity: _hover ? 1 : 0,
+                    duration: const Duration(milliseconds: 100),
+                    child: ColoredBox(
+                      color: Colors.black26,
+                      child: Center(
+                        child: Icon(
+                          LucideIcons.maximize2,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

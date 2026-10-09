@@ -1,10 +1,15 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:linkory_app/app/app.dart';
 import 'package:linkory_app/core/session.dart';
+import 'package:linkory_app/core/models.dart' show Transfer;
 import 'package:linkory_app/core/store.dart';
+import 'package:linkory_app/features/transfers/transfer_card.dart' show ImagePreview;
 import 'package:linkory_app/core/updater.dart';
 import 'package:linkory_app/core/update_install.dart';
 import 'package:linkory_app/shared/widgets.dart' show debugShowWindowControls;
@@ -203,5 +208,53 @@ void main() {
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('自动检查'), findsOneWidget);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/settings_update_light.png'));
+  });
+
+  testWidgets('image files show an inline preview; clicking it opens the viewer, Esc closes', (t) async {
+    // A real 64x40 PNG on disk.
+    late String path;
+    await t.runAsync(() async {
+      final rec = ui.PictureRecorder();
+      Canvas(rec).drawRect(const Rect.fromLTWH(0, 0, 64, 40), Paint()..color = const Color(0xFF3B82F6));
+      final img = await rec.endRecording().toImage(64, 40);
+      final bytes = (await img.toByteData(format: ui.ImageByteFormat.png))!;
+      final f = File('${Directory.systemTemp.path}/linkory_test_pic_${DateTime.now().microsecondsSinceEpoch}.png');
+      await f.writeAsBytes(bytes.buffer.asUint8List());
+      path = f.path;
+    });
+    addTearDown(() {
+      if (File(path).existsSync()) File(path).deleteSync();
+    });
+    FakeStore.files['pic'] = path;
+    addTearDown(FakeStore.files.clear);
+    final base = fixtureState();
+    final withPic = base.copyWith(transfers: [
+      ...base.transfers,
+      Transfer(id: 'pic', sender: 'mac', receiver: 'win', fileName: '风景.png', size: 1234, sha256: 'x', status: 'COMPLETED', createdAt: DateTime(2025, 3, 14, 10, 29)),
+    ]);
+    await pumpApp(t, withPic, size: const Size(1200, 1300));
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150))); // the existence probe is real I/O
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.byType(ImagePreview), findsOneWidget);
+    expect(find.text('风景.png'), findsOneWidget);
+
+    await t.tap(find.byType(ImagePreview));
+    await t.pumpAndSettle();
+    expect(find.text('风景.png'), findsNWidgets(2)); // the card + the viewer's title
+    expect(find.byTooltip('关闭（Esc）'), findsOneWidget);
+    expect(find.byTooltip('用系统程序打开原图'), findsOneWidget);
+
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.pumpAndSettle();
+    expect(find.byTooltip('关闭（Esc）'), findsNothing);
+
+    // A file that no longer exists shows no preview (and no broken-image box).
+    File(path).deleteSync();
+    FakeStore.files['pic'] = '${path}_gone';
+    await pumpApp(t, withPic, size: const Size(1200, 1300));
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150)));
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.byType(ImagePreview), findsOneWidget);
+    expect(find.descendant(of: find.byType(ImagePreview), matching: find.byType(Image)), findsNothing);
   });
 }

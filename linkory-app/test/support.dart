@@ -36,8 +36,10 @@ class FakeStore extends AppStore {
   Future<void> refreshAll() async {}
   @override
   Future<void> selectPeer(String id) async => state = state.copyWith(selectedPeer: id, section: Section.chats);
+  /// Per-task file paths for tests that need a real file on disk.
+  static final files = <String, String>{};
   @override
-  String? fileOf(Transfer t) => t.sender == 'mac' ? '/tmp/${t.fileName}' : t.savedPath;
+  String? fileOf(Transfer t) => files[t.id] ?? (t.sender == 'mac' ? '/tmp/${t.fileName}' : t.savedPath);
   @override
   Future<void> sendText(String peer, String text, {String type = 'text'}) async => sent.add(text);
 }
