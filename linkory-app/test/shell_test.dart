@@ -5,18 +5,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:linkory_app/app/app.dart';
 import 'package:linkory_app/core/session.dart';
 import 'package:linkory_app/core/store.dart';
+import 'package:linkory_app/core/updater.dart';
+import 'package:linkory_app/core/update_install.dart';
 import 'package:linkory_app/shared/widgets.dart' show debugShowWindowControls;
 
 import 'support.dart';
 
 Future<void> pumpApp(WidgetTester t, AppState s,
-    {Brightness b = Brightness.light, AuthStatus auth = AuthStatus.loggedIn, Size size = const Size(1200, 780)}) async {
+    {Brightness b = Brightness.light, AuthStatus auth = AuthStatus.loggedIn, Size size = const Size(1200, 780), UpdateState? update}) async {
   t.view.physicalSize = size;
   t.view.devicePixelRatio = 1;
   t.platformDispatcher.platformBrightnessTestValue = b;
   addTearDown(t.view.reset);
   addTearDown(t.platformDispatcher.clearPlatformBrightnessTestValue);
-  await t.pumpWidget(ProviderScope(key: UniqueKey(), overrides: await overrides(s, auth: auth), child: const LinkoryApp()));
+  await t.pumpWidget(ProviderScope(key: UniqueKey(), overrides: await overrides(s, auth: auth, update: update), child: const LinkoryApp()));
   // Wait for the brand asset decoder before comparing the first golden.
   await t.runAsync(() => precacheImage(
         const AssetImage('assets/icons/app_128.png'),
@@ -155,5 +157,51 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('季度报表-final.xlsx'), findsOneWidget);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/narrow_transfers_light.png'));
+  });
+
+  UpdateState available({String? manualReason}) {
+    final info = UpdateInfo(
+      version: SemVer.tryParse('0.2.0')!,
+      tag: 'v0.2.0',
+      notes: "## What's Changed\n* 会话排版改版 by @yuhuo in #12\n* 新增软件更新 by @yuhuo in #13\n\n**Full Changelog**: x",
+      pageUrl: 'https://github.com/yuhuotech/linkory/releases/tag/v0.2.0',
+      prerelease: false,
+      publishedAt: DateTime(2025, 3, 14, 9, 0),
+      assets: const [],
+    );
+    return UpdateState(latest: info, lastChecked: DateTime(2025, 3, 14, 10, 0), install: manualReason == null ? InstallPlan.fake('Linkory-0.2.0-macos.zip') : InstallPlan.fakeManual(manualReason));
+  }
+
+  testWidgets('update available: arrow above the settings button opens the dialog', (t) async {
+    await pumpApp(t, fixtureState(), update: available());
+    expect(find.byTooltip('发现新版本 0.2.0，点击查看并更新'), findsOneWidget);
+    await t.tap(find.byTooltip('发现新版本 0.2.0，点击查看并更新'));
+    await t.pumpAndSettle();
+    expect(find.text('发现新版本'), findsOneWidget);
+    expect(find.text('当前版本'), findsOneWidget);
+    expect(find.text('0.2.0'), findsOneWidget);
+    expect(find.text('立即更新'), findsOneWidget);
+    expect(find.text('前往下载页'), findsOneWidget);
+    expect(find.textContaining('新增软件更新'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/update_dialog_light.png'));
+  });
+
+  testWidgets('update available but this install cannot self-update: only the download page is offered', (t) async {
+    await pumpApp(t, fixtureState(), update: available(manualReason: '请先把应用拖到「应用程序」文件夹，再使用自动更新'));
+    await t.tap(find.byTooltip('发现新版本 0.2.0，点击查看并更新'));
+    await t.pumpAndSettle();
+    expect(find.text('立即更新'), findsNothing);
+    expect(find.text('前往下载页'), findsOneWidget);
+    expect(find.textContaining('拖到「应用程序」'), findsOneWidget);
+  });
+
+  testWidgets('no update: no arrow; settings has a 软件更新 page', (t) async {
+    await pumpApp(t, fixtureState(section: Section.settings));
+    expect(find.textContaining('发现新版本'), findsNothing);
+    await t.tap(find.text('软件更新'));
+    await t.pumpAndSettle();
+    expect(find.text('检查更新'), findsOneWidget);
+    expect(find.text('自动检查'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/settings_update_light.png'));
   });
 }

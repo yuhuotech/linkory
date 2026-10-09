@@ -13,4 +13,9 @@ ln -s /Applications "$STAGE/Applications"
 rm -f "$OUT"
 hdiutil create -volname "Linkory" -srcfolder "$STAGE" -ov -format UDZO "$OUT" >/dev/null
 rm -rf "$STAGE"
+# The in-app updater installs from a zip (ditto keeps the bundle intact); the dmg is for people.
+ZIP=build/Linkory-${VERSION}-macos.zip
+rm -f "$ZIP"
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 echo "$OUT"
+echo "$ZIP"

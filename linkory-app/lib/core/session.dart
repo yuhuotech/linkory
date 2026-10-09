@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'models.dart';
+import 'version.dart';
 import 'secrets.dart';
 
 /// Pre-filled server address. `make app-run` points it at the shared LAN test server via
@@ -88,7 +89,7 @@ class SessionController extends Notifier<SessionState> {
         'name': await deviceDisplayName(),
         'type': deviceTypeName(),
         'os_version': osVersionString(),
-        'app_version': '0.1.0',
+        'app_version': appVersion,
         'public_key': pub,
       },
     });
@@ -215,7 +216,7 @@ final guestDeviceProvider = FutureProvider<Device>((ref) async => Device(
       name: await deviceDisplayName(),
       type: deviceTypeName(),
       osVersion: osVersionString(),
-      appVersion: '0.1.0',
+      appVersion: appVersion,
       status: 'offline',
       current: true,
     ));

@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 import '../core/desktop.dart';
 import '../core/session.dart';
 import '../core/store.dart';
+import '../core/updater.dart';
 import '../shared/close_dialog.dart';
 import '../features/shell/shell.dart';
 import '../theme/tokens.dart';
@@ -57,6 +58,8 @@ class _RootState extends ConsumerState<_Root> {
   void initState() {
     super.initState();
     if (ref.read(sessionProvider).status == AuthStatus.loggedIn) _connect();
+    // Hourly update check; works signed out too (the first one waits a moment after launch).
+    Future.microtask(() => ref.read(updateProvider.notifier).start());
     ref.listenManual(sessionProvider.select((s) => s.status), (prev, s) {
       if (s == AuthStatus.loggedIn && prev != AuthStatus.loggedIn) _connect();
     });

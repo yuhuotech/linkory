@@ -40,3 +40,5 @@ Name: "{autodesktop}\连信 Linkory"; Filename: "{app}\linkory_app.exe"; Tasks: 
 
 [Run]
 Filename: "{app}\linkory_app.exe"; Description: "启动连信 Linkory"; Flags: nowait postinstall skipifsilent
+; Silent installs are in-app updates: start the new version again when done.
+Filename: "{app}\linkory_app.exe"; Flags: nowait; Check: WizardSilent

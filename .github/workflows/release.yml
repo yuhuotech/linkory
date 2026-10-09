@@ -132,7 +132,7 @@ jobs:
           V="${VERSION#v}"
           flutter pub get
           # Platform version resources want plain x.y.z: strip any -rc/-beta suffix for the app version only.
-          flutter build windows --release --build-name="${V%%-*}"
+          flutter build windows --release --build-name="${V%%-*}" --dart-define=LINKORY_VERSION="$V"
       - name: Bundle the Visual C++ runtime next to the app (so it starts on a clean PC)
         shell: pwsh
         run: |
@@ -169,9 +169,10 @@ jobs:
           cache: true
       - name: Build + dmg (unsigned)
         run: |
-          VERSION="${VERSION#v}" tools/package_macos.sh
+          V="${VERSION#v}"
+          VERSION="$V" BUILD_ARGS="--dart-define=LINKORY_VERSION=$V" tools/package_macos.sh
           mkdir -p dist
-          cp linkory-app/build/Linkory-*-macos.dmg dist/
+          cp linkory-app/build/Linkory-*-macos.dmg linkory-app/build/Linkory-*-macos.zip dist/
           ls -la dist
       - uses: actions/upload-artifact@v4
         with:
@@ -199,7 +200,7 @@ jobs:
         run: |
           flutter pub get
           V="${VERSION#v}"
-          flutter build linux --release --build-name="${V%%-*}"
+          flutter build linux --release --build-name="${V%%-*}" --dart-define=LINKORY_VERSION="$V"
       - name: Package
         run: |
           V="${VERSION#v}"
@@ -218,6 +219,8 @@ jobs:
     name: Android apk
     needs: test
     runs-on: ubuntu-latest
+    env:
+      KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -229,12 +232,20 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - name: Release keystore (a fixed key is what lets an installed app be updated in place)
+        if: ${{ env.KS_B64 != '' }}
+        run: |
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/linkory-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/linkory-release.jks" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
       - name: Build apk (debug-signed unless a release keystore is configured)
         working-directory: linkory-app
         run: |
           V="${VERSION#v}"
           flutter pub get
-          flutter build apk --release --build-name="${V%%-*}"
+          flutter build apk --release --build-name="${V%%-*}" --dart-define=LINKORY_VERSION="$V"
           mkdir -p ../dist
           cp build/app/outputs/flutter-apk/app-release.apk "../dist/Linkory-$V-android.apk"
       - uses: actions/upload-artifact@v4

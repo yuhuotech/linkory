@@ -7,12 +7,14 @@ import '../../core/api.dart';
 import '../../core/desktop.dart';
 import '../../core/log.dart';
 import '../../core/session.dart';
+import '../../core/version.dart';
 import '../../core/store.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
+import '../update/update_ui.dart';
 import '../auth/login_page.dart';
 
-enum SettingsTab { account, general, transfer, about }
+enum SettingsTab { account, general, transfer, update, about }
 
 class SettingsTabNotifier extends Notifier<SettingsTab> {
   @override
@@ -29,12 +31,14 @@ extension SettingsTabX on SettingsTab {
     SettingsTab.account => '账号与安全',
     SettingsTab.general => '通用',
     SettingsTab.transfer => '传输',
+    SettingsTab.update => '软件更新',
     SettingsTab.about => '关于',
   };
   IconData get icon => switch (this) {
     SettingsTab.account => LucideIcons.userRound,
     SettingsTab.general => LucideIcons.settings2,
     SettingsTab.transfer => LucideIcons.arrowLeftRight,
+    SettingsTab.update => LucideIcons.circleArrowUp,
     SettingsTab.about => LucideIcons.info,
   };
 }
@@ -277,8 +281,9 @@ class SettingsView extends ConsumerWidget {
           ),
         ),
       ],
+      SettingsTab.update => [const UpdatePanel()],
       SettingsTab.about => [
-        item('版本', t('0.1.0')),
+        item('版本', t(appVersion)),
         item('说明', t('连信 Linkory — 跨设备即时通信与数据传输。传输链路使用服务端中转，未实现端到端加密。')),
       ],
     };

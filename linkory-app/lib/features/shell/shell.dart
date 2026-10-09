@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/models.dart';
 import '../../core/realtime.dart';
 import '../../core/store.dart';
+import '../../core/updater.dart';
 import '../../shared/format.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
@@ -13,6 +14,7 @@ import '../chat/chat_view.dart';
 import '../devices/devices_view.dart';
 import '../guest/guest.dart';
 import '../settings/settings_view.dart';
+import '../update/update_ui.dart';
 import '../transfers/transfers_view.dart';
 
 const railWidth = 72.0;
@@ -89,7 +91,8 @@ class _BottomNav extends ConsumerWidget {
     final st = ref.watch(storeProvider);
     final store = ref.read(storeProvider.notifier);
     final active = st.transfers.where((t) => t.active).length;
-    Widget item(Section s, IconData icon, String label, {int badge = 0}) {
+    final updateDot = ref.watch(updateProvider.select((u) => u.badge));
+    Widget item(Section s, IconData icon, String label, {int badge = 0, bool dot = false}) {
       final sel = st.section == s;
       return Expanded(
         child: GestureDetector(
@@ -112,6 +115,12 @@ class _BottomNav extends ConsumerWidget {
                       child: Text('$badge', style: Type.badge.copyWith(color: c.actionFg, fontSize: 10, height: 1)),
                     ),
                   ),
+                if (dot)
+                  Positioned(
+                    right: -4,
+                    top: -2,
+                    child: Container(width: 8, height: 8, decoration: BoxDecoration(color: c.action, shape: BoxShape.circle, border: Border.all(color: c.bgSidebar, width: 1.5))),
+                  ),
               ]),
               const SizedBox(height: 3),
               Text(label, style: Type.badge.copyWith(color: sel ? c.actionText : c.text2, fontWeight: sel ? FontWeight.w600 : FontWeight.w500)),
@@ -129,7 +138,7 @@ class _BottomNav extends ConsumerWidget {
           item(Section.chats, LucideIcons.messageSquare, '会话'),
           item(Section.devices, LucideIcons.laptop, '设备'),
           item(Section.transfers, LucideIcons.arrowLeftRight, '传输', badge: active),
-          item(Section.settings, LucideIcons.settings, '设置'),
+          item(Section.settings, LucideIcons.settings, '设置', dot: updateDot),
         ]),
       ),
     );
@@ -211,6 +220,16 @@ class _Rail extends ConsumerWidget {
         const SizedBox(height: 4),
         nav(Section.transfers, LucideIcons.arrowLeftRight, '传输中心', badge: activeTransfers),
         const Spacer(),
+        if (ref.watch(updateProvider.select((u) => u.badge))) ...[
+          _RailButton(
+            icon: LucideIcons.circleArrowUp,
+            accent: true,
+            selected: false,
+            tooltip: '发现新版本 ${ref.watch(updateProvider.select((u) => u.latest?.version))}，点击查看并更新',
+            onTap: () => showUpdateDialog(context),
+          ),
+          const SizedBox(height: 6),
+        ],
         _LinkDot(state: st.link, guest: ref.watch(isGuestProvider)),
         const SizedBox(height: 8),
         nav(Section.settings, LucideIcons.settings, '设置'),
@@ -221,12 +240,13 @@ class _Rail extends ConsumerWidget {
 }
 
 class _RailButton extends StatefulWidget {
-  const _RailButton({required this.icon, required this.tooltip, required this.selected, required this.onTap, this.badge = 0});
+  const _RailButton({required this.icon, required this.tooltip, required this.selected, required this.onTap, this.badge = 0, this.accent = false});
   final IconData icon;
   final String tooltip;
   final bool selected;
   final VoidCallback onTap;
   final int badge;
+  final bool accent; // highlighted call-to-action (e.g. an update is available)
   @override
   State<_RailButton> createState() => _RailButtonState();
 }
@@ -253,7 +273,7 @@ class _RailButtonState extends State<_RailButton> {
               borderRadius: BorderRadius.circular(Radii.control),
             ),
             child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
-              Icon(widget.icon, size: 18, color: widget.selected ? c.text1 : c.text2),
+              Icon(widget.icon, size: 18, color: widget.accent ? c.action : (widget.selected ? c.text1 : c.text2)),
               if (widget.badge > 0)
                 Positioned(
                   right: 6,
@@ -493,6 +513,7 @@ class _SettingsList extends ConsumerWidget {
                 Icon(t.icon, size: 16, color: c.text2),
                 const SizedBox(width: 8),
                 Expanded(child: Text(t.label, style: Type.body.copyWith(color: c.text1, fontWeight: cur == t ? FontWeight.w500 : FontWeight.w400))),
+                if (t == SettingsTab.update && ref.watch(updateProvider.select((u) => u.badge))) Container(width: 8, height: 8, decoration: BoxDecoration(color: c.action, shape: BoxShape.circle)),
               ]),
             ),
           ),

@@ -7,7 +7,20 @@ import 'package:linkory_app/core/realtime.dart';
 import 'package:linkory_app/core/secrets.dart';
 import 'package:linkory_app/core/session.dart';
 import 'package:linkory_app/core/store.dart';
+import 'package:linkory_app/core/updater.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// Update service without timers or network.
+class FakeUpdate extends UpdateNotifier {
+  FakeUpdate([this.initial]);
+  final UpdateState? initial;
+  @override
+  UpdateState build() => initial ?? super.build();
+  @override
+  void start({Duration firstDelay = const Duration(seconds: 20)}) {}
+  @override
+  Future<void> check({bool manual = false}) async {}
+}
 
 /// Store with canned data and no network, for widget tests / screenshots.
 class FakeStore extends AppStore {
@@ -106,7 +119,7 @@ AppState fixtureState({Section section = Section.chats, String? peer = 'win'}) {
   );
 }
 
-Future<List<Override>> overrides(AppState s, {AuthStatus auth = AuthStatus.loggedIn}) async {
+Future<List<Override>> overrides(AppState s, {AuthStatus auth = AuthStatus.loggedIn, UpdateState? update}) async {
   SharedPreferences.setMockInitialValues({
     if (auth == AuthStatus.loggedIn) ...{'device_id': 'mac', 'username': 'hongmw'},
   });
@@ -115,6 +128,7 @@ Future<List<Override>> overrides(AppState s, {AuthStatus auth = AuthStatus.logge
     prefsProvider.overrideWithValue(prefs),
     secretsProvider.overrideWithValue(Secrets.memory(auth == AuthStatus.loggedIn ? {'access': 'a', 'refresh': 'r'} : {})),
     storeProvider.overrideWith(() => FakeStore(s)),
+    updateProvider.overrideWith(() => FakeUpdate(update)),
     guestDeviceProvider.overrideWith((_) async => dev('local', '我的 MacBook Pro', 'macos', current: true)),
   ];
 }
