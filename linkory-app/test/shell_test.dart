@@ -93,6 +93,23 @@ void main() {
     expect(find.text('账号与安全'), findsOneWidget);
   });
 
+  testWidgets('file cards: open / show-in-folder icons for sent files and received files', (t) async {
+    await pumpApp(t, fixtureState());
+    // t1 (sent, in progress), t3 is in another chat; in this chat: t1 sent, t4 received+complete, t2 waiting (no file yet).
+    expect(find.byTooltip('打开文件'), findsNWidgets(2));
+    expect(find.byTooltip('在文件夹中显示'), findsNWidgets(2));
+    expect(find.text('显示文件'), findsNothing);
+  });
+
+  testWidgets('transfer settings: auto-accept switch is on by default', (t) async {
+    await pumpApp(t, fixtureState(section: Section.settings));
+    final c = ProviderScope.containerOf(t.element(find.byType(LinkoryApp)));
+    await t.tap(find.text('传输').first);
+    await t.pumpAndSettle();
+    expect(find.textContaining('自动接收'), findsWidgets);
+    expect(c.read(storeProvider).autoAccept, isTrue);
+  });
+
   testWidgets('composer sends on Enter', (t) async {
     await pumpApp(t, fixtureState());
     await t.enterText(find.byType(TextField).last, 'hello');

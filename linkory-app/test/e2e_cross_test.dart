@@ -45,6 +45,7 @@ void main() {
     await s.login(url!, user!, pass!);
     final store = c.read(storeProvider.notifier);
     await store.start();
+    await store.setAutoAccept(false); // we confirm the responder's file by hand; the responder auto-accepts
     St st() => c.read(storeProvider);
 
     // The responder registers its own device (type linux) and comes online.

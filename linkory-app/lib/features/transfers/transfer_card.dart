@@ -41,15 +41,19 @@ class TransferCard extends ConsumerWidget {
     final progress = task.size == 0 ? 0.0 : (task.bytes / task.size).clamp(0.0, 1.0);
 
     final actions = <Widget>[];
+    // Two compact icons instead of wide buttons: open the file / show it in the file manager.
+    // Files I sent: available any time (the source file); files I received: once complete.
+    final hasFile = store.canOpenFiles && store.fileOf(task) != null && (!incoming || ok);
+    if (hasFile) {
+      actions.add(LIconButton(icon: LucideIcons.externalLink, tooltip: '打开文件', size: 28, onPressed: () => store.openFile(task)));
+      actions.add(LIconButton(icon: LucideIcons.folderOpen, tooltip: '在文件夹中显示', size: 28, onPressed: () => store.revealFile(task)));
+    }
     if (task.status == 'WAITING_ACCEPT' && incoming) {
       actions.add(LButton(label: '接收', compact: true, variant: BtnVariant.solid, onPressed: () => store.accept(task)));
       actions.add(LButton(label: '拒绝', compact: true, onPressed: () => store.reject(task)));
     } else if (task.active) {
       actions.add(LButton(label: '取消', compact: true, onPressed: () => store.cancel(task)));
     } else {
-      if (ok && incoming && task.savedPath != null) {
-        actions.add(LButton(label: '显示文件', compact: true, icon: LucideIcons.folderOpen, onPressed: () => store.openSavedFile(task)));
-      }
       if (store.canRetry(task)) {
         actions.add(LButton(label: '重试', compact: true, icon: LucideIcons.rotateCw, onPressed: () => store.retryTransfer(task)));
       }
@@ -116,7 +120,7 @@ class TransferCard extends ConsumerWidget {
         ),
         if (actions.isNotEmpty) ...[
           const SizedBox(width: 12),
-          for (final a in actions) Padding(padding: const EdgeInsets.only(left: 6), child: a),
+          for (final a in actions) Padding(padding: EdgeInsets.only(left: a is LIconButton ? 2 : 6), child: a),
         ],
       ]),
     );

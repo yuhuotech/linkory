@@ -31,6 +31,37 @@ Future<ProviderContainer> client(String name, Directory saveDir) async {
 
 void main() {
   bigTest();
+  test('files from your own devices are received automatically by default', () async {
+    final user = 'auto${Random().nextInt(1 << 30)}';
+    final tmp = await Directory.systemTemp.createTemp('linkory_auto');
+    addTearDown(() => tmp.delete(recursive: true));
+    final a = await client('a', Directory('${tmp.path}/a'));
+    final b = await client('b', Directory('${tmp.path}/b'));
+    await a.read(sessionProvider.notifier).register(url!, user, 'correct-horse-9');
+    await a.read(sessionProvider.notifier).login(url!, user, 'correct-horse-9');
+    await b.read(sessionProvider.notifier).login(url!, user, 'correct-horse-9');
+    final sa = a.read(storeProvider.notifier), sb = b.read(storeProvider.notifier);
+    await sa.start();
+    await sb.start();
+    expect(b.read(storeProvider).autoAccept, isTrue);
+    final idb = b.read(sessionProvider).deviceId;
+    await until(() => a.read(storeProvider).isOnline(idb), what: 'presence');
+    final f = File('${tmp.path}/auto.txt')..writeAsStringSync('no confirmation needed');
+    await sa.sendFile(idb, f.path);
+    await until(() => a.read(storeProvider).transfers.any((t) => t.status == 'COMPLETED'), what: 'completed without accept');
+    expect(File('${tmp.path}/b/auto.txt').readAsStringSync(), 'no confirmation needed');
+    // Both ends can open their copy: the sender its source, the receiver the saved file.
+    expect(sa.fileOf(a.read(storeProvider).transfers.first), f.path);
+    expect(sb.fileOf(b.read(storeProvider).transfers.first), '${tmp.path}/b/auto.txt');
+
+    // Turning it off brings the confirmation step back.
+    await sb.setAutoAccept(false);
+    await sa.sendFile(idb, f.path);
+    await until(() => b.read(storeProvider).transfers.any((t) => t.status == 'WAITING_ACCEPT'), what: 'invite waits');
+    await Future<void>.delayed(const Duration(seconds: 1));
+    expect(b.read(storeProvider).transfers.where((t) => t.status == 'WAITING_ACCEPT'), hasLength(1));
+  }, skip: url == null ? 'set LINKORY_E2E_URL' : false, timeout: const Timeout(Duration(seconds: 60)));
+
   test('password change keeps this device, signs out the other', () async {
     final user = 'pw${Random().nextInt(1 << 30)}';
     final tmp = await Directory.systemTemp.createTemp('linkory_pw');
@@ -65,6 +96,7 @@ void main() {
     final sa = a.read(storeProvider.notifier), sb = b.read(storeProvider.notifier);
     await sa.start();
     await sb.start();
+    await sb.setAutoAccept(false); // this test drives accept/reject by hand
     final ida = a.read(sessionProvider).deviceId, idb = b.read(sessionProvider).deviceId;
 
     // AT-02 / AT-03: both see each other, online.
@@ -150,9 +182,8 @@ void bigTest() {
 
     final sw = Stopwatch()..start();
     await sa.sendFile(idb, src.path);
-    await until(() => b.read(storeProvider).transfers.any((t) => t.status == 'WAITING_ACCEPT'), what: 'invite', seconds: 120);
-    await sb.accept(b.read(storeProvider).transfers.first);
-    await until(() => b.read(storeProvider).transfers.first.status == 'COMPLETED', what: 'completed', seconds: 900);
+    // Auto-accept is on by default: no confirmation step.
+    await until(() => b.read(storeProvider).transfers.any((t) => t.status == 'COMPLETED'), what: 'completed', seconds: 900);
     // ignore: avoid_print
     print('transferred $bigMb MB in ${sw.elapsed.inSeconds}s, rss=${ProcessInfo.currentRss ~/ (1 << 20)} MB');
     final dst = File('${tmp.path}/b/big.bin');

@@ -24,6 +24,8 @@ class FakeStore extends AppStore {
   @override
   Future<void> selectPeer(String id) async => state = state.copyWith(selectedPeer: id, section: Section.chats);
   @override
+  String? fileOf(Transfer t) => t.sender == 'mac' ? '/tmp/${t.fileName}' : t.savedPath;
+  @override
   Future<void> sendText(String peer, String text, {String type = 'text'}) async => sent.add(text);
 }
 
@@ -78,6 +80,7 @@ AppState fixtureState({Section section = Section.chats, String? peer = 'win'}) {
     transfers: [
       Transfer(id: 't1', sender: 'mac', receiver: 'win', fileName: '季度报表-final.xlsx', size: 4823551, sha256: 'a', status: 'TRANSFERRING', createdAt: now.subtract(const Duration(minutes: 2)), bytes: 2200000),
       Transfer(id: 't2', sender: 'win', receiver: 'mac', fileName: 'design-v7.fig', size: 91234567, sha256: 'b', status: 'WAITING_ACCEPT', createdAt: now.subtract(const Duration(minutes: 1))),
+      Transfer(id: 't4', sender: 'win', receiver: 'mac', fileName: '会议纪要.docx', size: 482113, sha256: 'd', status: 'COMPLETED', createdAt: now.subtract(const Duration(minutes: 20)))..savedPath = '/Users/me/Downloads/Linkory/会议纪要.docx',
       Transfer(id: 't3', sender: 'mac', receiver: 'phone', fileName: 'IMG_2031.jpg', size: 3145728, sha256: 'c', status: 'COMPLETED', createdAt: now.subtract(const Duration(hours: 5))),
     ],
   );

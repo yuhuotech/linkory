@@ -134,6 +134,14 @@ class SettingsView extends ConsumerWidget {
                   }),
             ]),
           ),
+          item(
+            '接收文件',
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              LSwitch(value: st.autoAccept, onChanged: (v) => ref.read(storeProvider.notifier).setAutoAccept(v)),
+              const SizedBox(width: 10),
+              Text(st.autoAccept ? '自动接收（收到文件邀请时直接开始接收）' : '每次手动确认后再接收', style: Type.body.copyWith(color: c.text2)),
+            ]),
+          ),
           item('同名文件', t('自动重命名，不覆盖已有文件')),
           item(
             '传输方式',

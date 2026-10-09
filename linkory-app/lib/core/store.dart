@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'api.dart';
 import 'lan/lan.dart';
 import 'log.dart';
+import '../shared/format.dart';
 import 'models.dart';
 import 'realtime.dart';
 import 'session.dart';
@@ -30,6 +31,7 @@ class AppState {
     this.error,
     this.saveDir = '',
     this.transferMode = 'auto',
+    this.autoAccept = true,
   });
   final List<Device> devices;
   final Set<String> online;
@@ -45,6 +47,9 @@ class AppState {
   /// auto = try same-network direct first, relay otherwise; lan = direct only; relay = server relay only.
   final String transferMode;
 
+  /// Accept incoming files without asking (default). Offers only come from your own devices.
+  final bool autoAccept;
+
   static const _keep = Object();
 
   AppState copyWith({
@@ -59,6 +64,7 @@ class AppState {
     Object? error = _keep,
     String? saveDir,
     String? transferMode,
+    bool? autoAccept,
   }) =>
       AppState(
         devices: devices ?? this.devices,
@@ -72,6 +78,7 @@ class AppState {
         error: identical(error, _keep) ? this.error : error as String?,
         saveDir: saveDir ?? this.saveDir,
         transferMode: transferMode ?? this.transferMode,
+        autoAccept: autoAccept ?? this.autoAccept,
       );
 
   Device? device(String id) => devices.where((d) => d.id == id).firstOrNull;
@@ -120,7 +127,7 @@ class AppStore extends Notifier<AppState> {
     _localPaths.addAll(_loadMap(p.getString('send_paths')));
     _hiddenMsgs = (p.getStringList('hidden_msgs') ?? const []).toSet();
     _hiddenTasks = (p.getStringList('hidden_tasks') ?? const []).toSet();
-    return AppState(saveDir: p.getString('save_dir') ?? _defaultSaveDir(), transferMode: p.getString('transfer_mode') ?? 'auto');
+    return AppState(saveDir: p.getString('save_dir') ?? _defaultSaveDir(), transferMode: p.getString('transfer_mode') ?? 'auto', autoAccept: p.getBool('auto_accept') ?? true);
   }
 
   late Map<String, String> _savedPaths; // receiver: task id -> saved file path
@@ -255,6 +262,11 @@ class AppStore extends Notifier<AppState> {
         },
       );
 
+  Future<void> setAutoAccept(bool on) async {
+    await ref.read(prefsProvider).setBool('auto_accept', on);
+    state = state.copyWith(autoAccept: on);
+  }
+
   Future<void> setTransferMode(String mode) async {
     await ref.read(prefsProvider).setString('transfer_mode', mode);
     state = state.copyWith(transferMode: mode);
@@ -273,7 +285,7 @@ class AppStore extends Notifier<AppState> {
     _lanTimer?.cancel();
     unawaited(_lan?.close());
     _lan = null;
-    state = AppState(saveDir: state.saveDir, transferMode: state.transferMode, section: state.section); // stay on the current page after sign-out
+    state = AppState(saveDir: state.saveDir, transferMode: state.transferMode, autoAccept: state.autoAccept, section: state.section); // stay on the current page after sign-out
   }
 
   Future<void> refreshAll() async {
@@ -493,14 +505,41 @@ class AppStore extends Notifier<AppState> {
     await _persist();
   }
 
-  Future<void> openSavedFile(Transfer t) async {
-    final path = t.savedPath;
+  /// The local file behind a task: the source for files I sent, the saved copy for files I received.
+  String? fileOf(Transfer t) => t.sender == _self ? _localPaths[t.id] : t.savedPath;
+
+  bool get canOpenFiles => !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
+  Future<String?> _existing(Transfer t) async {
+    final path = fileOf(t);
     if (path == null || !File(path).existsSync()) {
       state = state.copyWith(error: '文件已被移动或删除');
-      return;
+      return null;
     }
-    // PRD 4.6: never auto-open; only on explicit user action.
-    await _reveal(path);
+    return path;
+  }
+
+  /// Open with the default application. PRD 4.6: only ever on an explicit user action.
+  Future<void> openFile(Transfer t) async {
+    final path = await _existing(t);
+    if (path == null) return;
+    try {
+      if (Platform.isMacOS) {
+        await Process.run('open', [path]);
+      } else if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', path]);
+      } else {
+        await Process.run('xdg-open', [path]);
+      }
+    } catch (e) {
+      state = state.copyWith(error: '无法打开文件');
+    }
+  }
+
+  /// Show the file in the system file manager.
+  Future<void> revealFile(Transfer t) async {
+    final path = await _existing(t);
+    if (path != null) await _reveal(path);
   }
 
   Future<void> revealPath(String path) => _reveal(path);
@@ -564,18 +603,28 @@ class AppStore extends Notifier<AppState> {
     }
     _addTransfer(t);
     if (e.type == 'transfer.offer' && t.receiver == _self && !_hiddenTasks.contains(t.id)) {
-      ref.read(notifyProvider)('${state.device(t.sender)?.name ?? '设备'} 想发送文件', '${t.fileName}（${t.size} 字节）');
+      final from = state.device(t.sender)?.name ?? '设备';
+      ref.read(notifyProvider)(state.autoAccept ? '正在接收 $from 发来的文件' : '$from 想发送文件', '${t.fileName}（${fmtBytes(t.size)}）');
+      if (state.autoAccept) {
+        unawaited(accept(t).catchError((Object err) {
+          Log.warn('transfer', 'auto-accept failed: ${err.runtimeType}');
+        }));
+      }
     }
     if (e.type == 'transfer.accept' && t.sender == _self) unawaited(_startSend(t));
     if (!t.active) _active.remove(t.id)?.close();
   }
 
+  final Set<String> _accepting = {};
+
   Future<void> accept(Transfer t) async {
+    if (!_accepting.add(t.id)) return; // already accepted (e.g. automatically)
     _lanAccepted.add(t.id); // before the request: the sender may connect the moment it hears of the accept
     try {
       await _api.request('POST', '/transfers/${t.id}/accept');
     } catch (_) {
       _lanAccepted.remove(t.id);
+      _accepting.remove(t.id);
       rethrow;
     }
     // Pull through the relay right away; if the sender reaches us directly, that request is dropped.
