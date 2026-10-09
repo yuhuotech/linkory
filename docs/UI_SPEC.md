@@ -161,4 +161,6 @@ macOS AppIcon 同时用于 Finder、Dock 与系统应用入口；菜单栏使用
 - Linux 的「关闭窗口时最小化到托盘」默认关闭（GNOME 默认不显示托盘图标，窗口藏起来就找不回了）；macOS/Windows 默认开启，可在 设置 → 通用 修改。
 - 新页面必须使用 `PageHeader`，不要自己拼页头，否则会缺少窗口按钮和拖动区。
 - 「关闭到托盘」= 窗口隐藏 + 从 Dock / 任务栏移除（`hideToTray`：`hide` 后 `setSkipTaskbar(true)`，macOS 上应用切到 accessory 模式），进程、连接和托盘图标继续运行；从托盘图标/菜单、通知点击恢复（`showWindow` 先恢复 Dock 条目再显示）。Cmd+Q / 托盘「退出」才真正退出。Linux 若开启此项，需要桌面环境显示托盘（GNOME 需 AppIndicator 扩展），否则窗口无法找回。
+- **首次关闭询问（Windows / Linux）**：默认行为是「每次询问」，第一次点关闭弹 `showCloseDialog`：「隐藏到托盘」（默认选中）/「退出应用」两个选项卡 + 「记住我的选择」复选框（默认勾选）；取消则窗口保持不变。macOS 默认直接隐藏到托盘，不询问。设置 → 通用 → 「关闭窗口时」可改为 每次询问 / 隐藏到托盘 / 退出应用。
+- **托盘不可用时不让用户藏起窗口**：Linux 启动时检测 `org.kde.StatusNotifierWatcher`（Ubuntu 自带的 AppIndicator 扩展提供），没有则「隐藏到托盘」选项置灰并说明原因，已保存为 tray 的设置也按「退出」处理。
 

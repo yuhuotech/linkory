@@ -8,11 +8,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../shared/close_dialog.dart';
+
 /// Windows and Linux draw their own minimise/maximise/close buttons (the title bar is hidden for a
 /// cleaner look); macOS keeps its native traffic lights.
 bool get hasCustomWindowControls => isDesktop && !Platform.isMacOS;
 
-bool get isDesktop => !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+bool get isDesktop =>
+    !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
 
 /// Window, tray, notifications and launch-at-login (PRD 4.10). Desktop only.
 class DesktopShell with TrayListener, WindowListener {
@@ -21,12 +24,36 @@ class DesktopShell with TrayListener, WindowListener {
 
   static DesktopShell? instance;
 
-  /// Closing the window hides it to the tray instead of quitting. On by default on macOS/Windows;
-  /// off on Linux, where GNOME shows no tray icon without an extension and a hidden window could
-  /// not be brought back.
-  bool get closeToTray => _prefs.getBool('close_to_tray') ?? defaultCloseToTray;
-  static bool get defaultCloseToTray => !Platform.isLinux;
-  Future<void> setCloseToTray(bool v) => _prefs.setBool('close_to_tray', v);
+  /// What the window's close button does: `ask` (prompt), `tray` (hide, keep running) or `quit`.
+  /// macOS hides to the tray by default; Windows/Linux ask on the first close and remember the answer.
+  String get closeBehavior {
+    final v = _prefs.getString('close_behavior');
+    if (v == 'ask' || v == 'tray' || v == 'quit') return v!;
+    final legacy = _prefs.getBool('close_to_tray'); // older builds
+    if (legacy != null) return legacy ? 'tray' : 'quit';
+    return Platform.isMacOS ? 'tray' : 'ask';
+  }
+
+  Future<void> setCloseBehavior(String v) =>
+      _prefs.setString('close_behavior', v);
+
+  /// Whether a tray icon can actually be shown. Always true on macOS/Windows; on Linux it needs a
+  /// StatusNotifier host (Ubuntu's AppIndicator extension), otherwise a hidden window is lost.
+  bool trayAvailable = true;
+
+  static Future<bool> _detectTray() async {
+    if (!Platform.isLinux) return true;
+    try {
+      return (await Process.run('busctl', [
+            '--user',
+            'status',
+            'org.kde.StatusNotifierWatcher',
+          ])).exitCode ==
+          0;
+    } catch (_) {
+      return false;
+    }
+  }
 
   static Future<DesktopShell?> init(SharedPreferences prefs) async {
     if (!isDesktop) return null;
@@ -39,7 +66,8 @@ class DesktopShell with TrayListener, WindowListener {
       minimumSize: Size(860, 560),
       center: true,
       title: '连信 Linkory',
-      titleBarStyle: TitleBarStyle.hidden, // macOS: traffic lights float over the rail
+      titleBarStyle:
+          TitleBarStyle.hidden, // macOS: traffic lights float over the rail
     );
     await windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.show();
@@ -49,13 +77,18 @@ class DesktopShell with TrayListener, WindowListener {
     windowManager.addListener(s);
 
     try {
-      await localNotifier.setup(appName: 'Linkory', shortcutPolicy: ShortcutPolicy.requireCreate);
+      await localNotifier.setup(
+        appName: 'Linkory',
+        shortcutPolicy: ShortcutPolicy.requireCreate,
+      );
     } catch (e) {
       debugPrint('notifier setup failed: $e');
     }
+    s.trayAvailable = await _detectTray();
     try {
       await s._initTray();
     } catch (e) {
+      s.trayAvailable = false;
       debugPrint('tray setup failed: $e');
     }
     return s;
@@ -66,16 +99,20 @@ class DesktopShell with TrayListener, WindowListener {
       Platform.isWindows
           ? 'assets/icons/app.ico'
           : Platform.isMacOS
-              ? 'assets/icons/tray@2x.png'
-              : 'assets/icons/app_32.png',
+          ? 'assets/icons/tray@2x.png'
+          : 'assets/icons/app_32.png',
       isTemplate: Platform.isMacOS, // adapts to light/dark menu bar
     );
     if (!Platform.isLinux) await trayManager.setToolTip('连信 Linkory');
-    await trayManager.setContextMenu(Menu(items: [
-      MenuItem(key: 'show', label: '显示 Linkory'),
-      MenuItem.separator(),
-      MenuItem(key: 'quit', label: '退出'),
-    ]));
+    await trayManager.setContextMenu(
+      Menu(
+        items: [
+          MenuItem(key: 'show', label: '显示 Linkory'),
+          MenuItem.separator(),
+          MenuItem(key: 'quit', label: '退出'),
+        ],
+      ),
+    );
     trayManager.addListener(this);
   }
 
@@ -96,8 +133,13 @@ class DesktopShell with TrayListener, WindowListener {
   /// Notify only when the user is not already looking at the app.
   Future<void> notify(String title, String body) async {
     try {
-      if (await windowManager.isVisible() && await windowManager.isFocused()) return;
-      final n = LocalNotification(title: title, body: body.length > 120 ? '${body.substring(0, 120)}…' : body);
+      if (await windowManager.isVisible() && await windowManager.isFocused()) {
+        return;
+      }
+      final n = LocalNotification(
+        title: title,
+        body: body.length > 120 ? '${body.substring(0, 120)}…' : body,
+      );
       n.onClick = showWindow;
       await n.show();
     } catch (e) {
@@ -108,14 +150,26 @@ class DesktopShell with TrayListener, WindowListener {
   // ---- launch at login -------------------------------------------------------------------
 
   static const _channel = MethodChannel('com.yuhuo.linkory/autostart');
-  static final _linuxFile = File('${Platform.environment['HOME']}/.config/autostart/linkory.desktop');
+  static final _linuxFile = File(
+    '${Platform.environment['HOME']}/.config/autostart/linkory.desktop',
+  );
   static const _winKey = r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run';
 
   static Future<bool> autostartEnabled() async {
     try {
-      if (Platform.isMacOS) return await _channel.invokeMethod<bool>('isEnabled') ?? false;
+      if (Platform.isMacOS) {
+        return await _channel.invokeMethod<bool>('isEnabled') ?? false;
+      }
       if (Platform.isLinux) return _linuxFile.existsSync();
-      if (Platform.isWindows) return (await Process.run('reg', ['query', _winKey, '/v', 'Linkory'])).exitCode == 0;
+      if (Platform.isWindows) {
+        return (await Process.run('reg', [
+              'query',
+              _winKey,
+              '/v',
+              'Linkory',
+            ])).exitCode ==
+            0;
+      }
     } catch (_) {}
     return false;
   }
@@ -123,18 +177,36 @@ class DesktopShell with TrayListener, WindowListener {
   static Future<void> setAutostart(bool on) async {
     try {
       if (Platform.isMacOS) {
-        await _channel.invokeMethod('set', on); // SMAppService login item (macOS 13+)
+        await _channel.invokeMethod(
+          'set',
+          on,
+        ); // SMAppService login item (macOS 13+)
       } else if (Platform.isLinux) {
         if (on) {
           await _linuxFile.parent.create(recursive: true);
           await _linuxFile.writeAsString(
-              '[Desktop Entry]\nType=Application\nName=Linkory\nExec=${Platform.resolvedExecutable}\nX-GNOME-Autostart-enabled=true\n');
+            '[Desktop Entry]\nType=Application\nName=Linkory\nExec=${Platform.resolvedExecutable}\nX-GNOME-Autostart-enabled=true\n',
+          );
         } else if (_linuxFile.existsSync()) {
           await _linuxFile.delete();
         }
       } else if (Platform.isWindows) {
         await Process.run(
-            'reg', on ? ['add', _winKey, '/v', 'Linkory', '/t', 'REG_SZ', '/d', '"${Platform.resolvedExecutable}"', '/f'] : ['delete', _winKey, '/v', 'Linkory', '/f']);
+          'reg',
+          on
+              ? [
+                  'add',
+                  _winKey,
+                  '/v',
+                  'Linkory',
+                  '/t',
+                  'REG_SZ',
+                  '/d',
+                  '"${Platform.resolvedExecutable}"',
+                  '/f',
+                ]
+              : ['delete', _winKey, '/v', 'Linkory', '/f'],
+        );
       }
     } catch (e) {
       debugPrint('autostart failed: $e');
@@ -145,12 +217,35 @@ class DesktopShell with TrayListener, WindowListener {
 
   @override
   void onWindowClose() async {
-    if (closeToTray) {
+    var behavior = closeBehavior;
+    if (behavior == 'tray' && !trayAvailable) {
+      behavior = 'quit'; // never hide a window nobody can bring back
+    }
+    if (behavior == 'ask') {
+      if (_asking) return;
+      _asking = true;
+      try {
+        final ctx = rootNavigatorKey.currentContext;
+        final choice = ctx == null
+            ? null
+            : await showCloseDialog(ctx, trayAvailable: trayAvailable);
+        if (choice == null) return; // cancelled: keep the window
+        if (choice.remember) {
+          await setCloseBehavior(choice.toTray ? 'tray' : 'quit');
+        }
+        behavior = choice.toTray ? 'tray' : 'quit';
+      } finally {
+        _asking = false;
+      }
+    }
+    if (behavior == 'tray') {
       await hideToTray();
     } else {
       await quit();
     }
   }
+
+  bool _asking = false;
 
   Future<void> quit() async {
     await trayManager.destroy();

@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 import '../core/desktop.dart';
 import '../core/session.dart';
 import '../core/store.dart';
+import '../shared/close_dialog.dart';
 import '../features/shell/shell.dart';
 import '../theme/tokens.dart';
 
@@ -20,6 +21,7 @@ class LinkoryApp extends ConsumerWidget {
       if (s != AuthStatus.loggedIn) ref.read(storeProvider.notifier).stop();
     });
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: '连信 Linkory',
       debugShowCheckedModeBanner: false,
       themeMode: ref.watch(themeModeProvider),

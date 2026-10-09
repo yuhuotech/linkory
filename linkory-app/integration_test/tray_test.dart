@@ -12,7 +12,7 @@ import 'package:window_manager/window_manager.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('close hides to the tray and removes the Dock entry; tray can bring it back', (tester) async {
-    SharedPreferences.setMockInitialValues({'close_to_tray': true});
+    SharedPreferences.setMockInitialValues({'close_behavior': 'tray'});
     final shell = await DesktopShell.init(await SharedPreferences.getInstance());
     expect(shell, isNotNull);
     await tester.pumpWidget(const SizedBox());
