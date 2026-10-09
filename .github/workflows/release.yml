@@ -267,10 +267,20 @@ jobs:
           pattern: pkg-*
           path: dist
           merge-multiple: true
-      - name: Checksums
+      - name: Checksums + signature
         working-directory: dist
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           sha256sum * > SHA256SUMS.txt
+          # The in-app updater only installs a package whose SHA256SUMS.txt carries a valid Ed25519
+          # signature from this key (public half is compiled into the app). That is what makes it safe
+          # to download through third-party GitHub accelerators.
+          test -n "$UPDATE_SIGNING_KEY" || { echo "secret UPDATE_SIGNING_KEY is missing" >&2; exit 1; }
+          printf '%s\n' "$UPDATE_SIGNING_KEY" > "$RUNNER_TEMP/update-signing.pem"
+          openssl pkeyutl -sign -inkey "$RUNNER_TEMP/update-signing.pem" -rawin -in SHA256SUMS.txt -out SHA256SUMS.txt.sig
+          openssl pkeyutl -verify -inkey "$RUNNER_TEMP/update-signing.pem" -rawin -in SHA256SUMS.txt -sigfile SHA256SUMS.txt.sig
+          rm -f "$RUNNER_TEMP/update-signing.pem"
           ls -la
       - name: Create the release
         uses: softprops/action-gh-release@v2

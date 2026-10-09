@@ -72,6 +72,12 @@ class _UpdateDialog extends ConsumerWidget {
               const SizedBox(height: 10),
               Text(plan!.manualReason!, style: Type.caption.copyWith(color: c.text3)),
             ],
+            if (!u.busy) ...[
+              const SizedBox(height: 14),
+              Text('下载源', style: Type.caption.copyWith(color: c.text3)),
+              const SizedBox(height: 6),
+              const UpdateSourcePicker(),
+            ],
             if (u.phase == UpdatePhase.downloading || u.phase == UpdatePhase.installing) ...[
               const SizedBox(height: 14),
               ClipRRect(
@@ -181,7 +187,44 @@ class UpdatePanel extends ConsumerWidget {
             const SizedBox(width: 10),
             Text('也提示测试版（rc / beta）', style: Type.body.copyWith(color: c.text2)),
           ])),
+      row('下载源', const UpdateSourcePicker(recheck: true)),
       if (u.available && u.install?.manualReason != null) row('说明', Text(u.install!.manualReason!, style: Type.caption.copyWith(color: c.text3))),
+    ]);
+  }
+}
+
+/// Where to check and download from: GitHub itself (default) or the mainland-China accelerators.
+class UpdateSourcePicker extends ConsumerWidget {
+  const UpdateSourcePicker({super.key, this.recheck = false});
+
+  /// Re-run the update check after switching (settings page); the dialog only changes the download route.
+  final bool recheck;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.c;
+    final u = ref.watch(updateProvider);
+    final n = ref.read(updateProvider.notifier);
+    final mirror = u.source == UpdateSource.mirror;
+    Widget opt(UpdateSource s, String label) => LButton(
+          label: label,
+          compact: true,
+          variant: u.source == s ? BtnVariant.solid : BtnVariant.neutral,
+          onPressed: u.busy ? null : () => n.setSource(s, recheck: recheck),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        opt(UpdateSource.github, 'GitHub 官方'),
+        const SizedBox(width: 6),
+        opt(UpdateSource.mirror, '国内加速'),
+      ]),
+      const SizedBox(height: 6),
+      Text(
+        mirror
+            ? '通过加速站 gh-proxy.com、ghfast.top 中转，失败自动换下一个${u.mirrorUsed == null ? '' : '（当前：${Uri.parse(u.mirrorUsed!).host}）'}。安装包仍用官方签名校验，加速站无法篡改。'
+            : '从 github.com 官方地址检查与下载（默认）。访问不了 GitHub 时可切换为「国内加速」。',
+        style: Type.caption.copyWith(color: c.text3, height: 1.4),
+      ),
     ]);
   }
 }

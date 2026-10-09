@@ -8,9 +8,9 @@
 | Android | `Linkory-<版本>-android.apk` | 使用测试签名，仅用于安装试用 |
 | 服务端 | `linkory-server-<版本>-<系统>-<架构>.tar.gz/zip` | Go 单文件程序，部署见仓库 `docs/DEPLOYMENT.md` |
 
-校验：`SHA256SUMS.txt`。
+校验：`SHA256SUMS.txt`（附 Ed25519 签名 `SHA256SUMS.txt.sig`，应用内更新据此验证）。
 
-**应用内更新**：设置 → 软件更新，或侧栏出现的「发现新版本」提示，可一键下载、校验并安装（Windows 安装版、macOS 放在「应用程序」中、Linux 的 .deb 安装版、Android 均支持；其余情况会引导到本页手动下载）。
+**应用内更新**：设置 → 软件更新，或侧栏出现的「发现新版本」提示，可一键下载、校验并安装（Windows 安装版、macOS 放在「应用程序」中、Linux 的 .deb 安装版、Android 均支持；其余情况会引导到本页手动下载）。访问不了 GitHub 时，可在更新对话框或设置里把下载源切换为「国内加速」（gh-proxy.com / ghfast.top），安装包仍由官方签名校验。
 
 ## 使用
 

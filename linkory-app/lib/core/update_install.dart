@@ -20,7 +20,7 @@ class InstallPlan {
 
   /// Test doubles for widget tests.
   @visibleForTesting
-  factory InstallPlan.fake(String asset) => InstallPlan._('fake', asset, null, (_) async {});
+  factory InstallPlan.fake(String asset, {Future<void> Function(File pkg)? onInstall}) => InstallPlan._('fake', asset, null, onInstall ?? (_) async {});
   @visibleForTesting
   factory InstallPlan.fakeManual(String why) => _manual(why);
 
