@@ -49,6 +49,7 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   path_provider: ^2.1.6
   cryptography_flutter: ^2.3.4
+  device_info_plus: ^13.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

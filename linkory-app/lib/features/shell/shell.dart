@@ -57,7 +57,8 @@ class _NarrowShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.c;
     return Scaffold(
-      backgroundColor: c.bgApp,
+      // The status-bar inset takes the colour of the page below it (list pages use the sidebar tone).
+      backgroundColor: st.section == Section.transfers ? c.bgApp : c.bgSidebar,
       body: SafeArea(
         bottom: false,
         child: switch (st.section) {

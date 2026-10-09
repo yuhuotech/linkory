@@ -67,11 +67,11 @@ linkory/
 - ✅ 客户端联调：双客户端（独立会话）对真实服务端的端到端测试（`linkory-app/test/e2e_test.dart`）与真机集成测试（`integration_test/app_test.dart`，真实窗口渲染截图）通过。
 - ✅ 阶段 05 桌面体验：托盘与关闭到托盘、系统通知、拖拽/多文件发送、隐藏标题栏、开机启动（macOS/Windows/Linux 原生实现）、本地日志、主题设置、凭据存系统钥匙串（不可用时回退）、macOS dmg 打包脚本（`make app-macos-dmg`）。
 - ✅ 阶段 06 局域网直连（V1.1）：每任务密钥协商、`LNK1` 加密直连协议、断点续传、失败回退中转、传输方式设置（自动/仅局域网/仅中转）；Rust 参考实现 `linkory-core` 与 Dart 实现双向互操作测试通过。
-- 🚧 阶段 07：窄屏单栏布局 + 底部导航已完成（widget 测试），iOS 可构建（`flutter build ios --no-codesign`）；Android 因本机未装 SDK 未构建，Windows/Linux 未在对应系统构建。移动端系统分享入口、移动端通知尚未实现。
+- 🚧 阶段 07：窄屏单栏布局 + 底部导航已完成；iOS 可构建（`flutter build ios --no-codesign`）；Android 已装 SDK，debug/release APK 可构建，并在 Android 15 模拟器上跑通真实应用集成测试（登录、收消息、收文件邀请，截图核对）；Windows/Linux 未在对应系统构建。移动端系统分享入口、移动端通知尚未实现。
 
 ### 未完成 / 已知限制
 
-- Android SDK 未安装，Android 未构建；Windows、Linux 桌面未在对应系统构建验证（仅 macOS、iOS 构建过）。
+- Windows、Linux 桌面未在对应系统构建验证（macOS、iOS、Android 构建过）；iOS 未在模拟器/真机运行；Android 只在模拟器上验证。
 - 局域网直连的加密在 Dart 中为软件实现（AOT 约 40 MB/s）；Rust 参考实现约 240 MB/s，待 FFI 接入后提速（见 `linkory-core/README.md`）。
 - 局域网发现采用「服务端交换候选地址」而非 mDNS：同一账号的设备经服务端互知局域网端点，简单可靠，但需要服务端可达；mDNS（无服务端时发现）留待 Rust 核心接入后实现。
 - 在线状态为进程内存，仅支持单实例；多实例需 Redis。

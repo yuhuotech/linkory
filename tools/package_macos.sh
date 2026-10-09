@@ -7,7 +7,7 @@ APP="build/macos/Build/Products/Release/连信 Linkory.app"
 VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
 OUT=build/Linkory-${VERSION}-macos.dmg
 STAGE=$(mktemp -d)
-cp -R "$APP" "$STAGE/Linkory.app"
+cp -R "$APP" "$STAGE/连信 Linkory.app"
 ln -s /Applications "$STAGE/Applications"
 rm -f "$OUT"
 hdiutil create -volname "Linkory" -srcfolder "$STAGE" -ov -format UDZO "$OUT" >/dev/null

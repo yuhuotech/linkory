@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:cryptography/cryptography.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -80,7 +81,7 @@ class SessionController extends Notifier<SessionState> {
         // Reuse the device identity only for the same server+account; otherwise register anew.
         if (_p.getString('device_server') == api.baseUrl && _p.getString('username') == username)
           'device_id': _p.getString('device_id'),
-        'name': _deviceName(),
+        'name': await _deviceName(),
         'type': _deviceType(),
         'os_version': _osVersion(),
         'app_version': '0.1.0',
@@ -154,10 +155,20 @@ class SessionController extends Notifier<SessionState> {
     };
   }
 
-  String _deviceName() {
+  Future<String> _deviceName() async {
     if (kIsWeb) return 'Web 浏览器';
     try {
-      return Platform.localHostname;
+      // Phones report "localhost" as hostname; use the model name there.
+      if (Platform.isAndroid) {
+        final a = await DeviceInfoPlugin().androidInfo;
+        final n = '${a.manufacturer} ${a.model}'.trim();
+        if (n.isNotEmpty) return n.length > 60 ? n.substring(0, 60) : n;
+      } else if (Platform.isIOS) {
+        final i = await DeviceInfoPlugin().iosInfo;
+        if (i.name.isNotEmpty) return i.name.length > 60 ? i.name.substring(0, 60) : i.name;
+      }
+      final h = Platform.localHostname;
+      return h.length > 60 ? h.substring(0, 60) : h;
     } catch (_) {
       return _deviceType();
     }
@@ -166,7 +177,8 @@ class SessionController extends Notifier<SessionState> {
   String _osVersion() {
     if (kIsWeb) return 'web';
     try {
-      return Platform.operatingSystemVersion;
+      final v = Platform.operatingSystemVersion;
+      return v.length > 60 ? '${v.substring(0, 60)}…' : v;
     } catch (_) {
       return '';
     }

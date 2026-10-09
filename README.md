@@ -4,7 +4,7 @@
 
 目标平台：Windows / macOS / Linux / Android / iOS（Flutter 单套 UI）。
 
-> 状态：服务端与桌面客户端功能（阶段 01–06）已完成并通过测试，macOS 与 iOS 可构建；Android / Windows / Linux 尚未构建验证。进度与已知限制见 [开发计划](docs/DEVELOPMENT_PLAN.md)。
+> 状态：服务端与桌面客户端功能（阶段 01–06）已完成并通过测试，macOS、iOS、Android 可构建（Android 在模拟器验证）；Windows / Linux 尚未构建验证。进度与已知限制见 [开发计划](docs/DEVELOPMENT_PLAN.md)。
 
 ## 功能
 

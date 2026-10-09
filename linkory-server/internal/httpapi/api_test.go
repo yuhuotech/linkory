@@ -223,3 +223,16 @@ func TestMetrics(t *testing.T) {
 		t.Fatal("metrics auth")
 	}
 }
+
+// Android reports a very long kernel string as its OS version; login must not fail on it.
+func TestLoginClipsLongDeviceInfo(t *testing.T) {
+	h := setup(t)
+	call(h, "POST", "/api/v1/auth/register", "", map[string]any{"username": "androidu", "password": "password123"})
+	d := dev("pixel")
+	d["type"] = "android"
+	d["os_version"] = "Linux 6.6.66-android15-8-gb5b6a7f5ea1c-ab12345678 #1 SMP PREEMPT Mon Jan 1 00:00:00 UTC 2026"
+	d["app_version"] = "0.1.0+1-some-very-long-build-metadata-string"
+	if code, out := call(h, "POST", "/api/v1/auth/login", "", map[string]any{"username": "androidu", "password": "password123", "device": d}); code != 200 {
+		t.Fatalf("login with long device info: %d %v", code, out)
+	}
+}

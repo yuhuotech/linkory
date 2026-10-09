@@ -17,6 +17,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const url = String.fromEnvironment('LINKORY_E2E_URL', defaultValue: 'http://127.0.0.1:8090');
 
+// On devices where the sandbox is wiped after the run, an external script (adb screencap) can grab
+// the screen while the test holds each state for this many seconds.
+const holdSeconds = int.fromEnvironment('LINKORY_HOLD_SECONDS', defaultValue: 0);
+
 Future<ProviderContainer> headless(Directory dir) async {
   SharedPreferences.setMockInitialValues({'save_dir': dir.path});
   final prefs = await SharedPreferences.getInstance();
@@ -55,6 +59,11 @@ void main() {
       final img = await tester.runAsync(() => b.toImage(pixelRatio: 1));
       final bytes = await tester.runAsync(() => img!.toByteData(format: ui.ImageByteFormat.png));
       File('${out.path}/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());
+      if (holdSeconds > 0) {
+        // ignore: avoid_print
+        print('HOLD $name');
+        await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: holdSeconds)));
+      }
     }
 
     await tester.pump(const Duration(seconds: 1));

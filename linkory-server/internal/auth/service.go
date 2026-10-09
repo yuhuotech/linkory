@@ -137,9 +137,19 @@ func (s *Service) ensureDevice(ctx context.Context, uid uint64, d DeviceInfo) (s
 		return "", apiutil.Err(400, "invalid_device_name", "device name must be 1-64 characters")
 	}
 	id := uuid.NewString()
+	// Informational fields come from the client (Android reports a long kernel string): clip them
+	// to the column sizes instead of failing the login.
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO devices(id,user_id,name,device_type,os_version,app_version,public_key) VALUES(?,?,?,?,?,?,?)`,
-		id, uid, name, d.Type, d.OSVersion, d.AppVersion, d.PublicKey)
+		id, uid, name, d.Type, clip(d.OSVersion, 64), clip(d.AppVersion, 32), d.PublicKey)
 	return id, err
+}
+
+// clip truncates to at most n runes.
+func clip(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
+	}
+	return s
 }
 
 func (s *Service) newSession(ctx context.Context, uid uint64, deviceID string) (*Tokens, error) {
