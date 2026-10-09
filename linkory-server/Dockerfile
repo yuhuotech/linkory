@@ -1,11 +1,16 @@
-FROM golang:1.26 AS build
+FROM golang:1.26.5-bookworm AS build
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/linkory-server ./cmd/linkory-server
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/linkory-server ./cmd/linkory-server
 
-FROM gcr.io/distroless/static-debian12
-COPY --from=build /out/linkory-server /linkory-server
+FROM alpine:3.22
+RUN adduser -D -u 10001 linkory
+USER linkory
+COPY --from=build /out/linkory-server /usr/local/bin/linkory-server
 EXPOSE 8080
-ENTRYPOINT ["/linkory-server"]
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
+ENTRYPOINT ["linkory-server"]

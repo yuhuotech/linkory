@@ -1,0 +1,98 @@
+# 自建部署指南（AT-12）
+
+本文说明如何在一台服务器上独立安装并运行 Linkory 服务端。服务端是单个 Go 程序，依赖一个 MySQL 8 数据库；文件传输只在内存中转，不落盘。
+
+## 1. 前置条件
+
+- Docker 与 Docker Compose v2（或本机 Go 1.26+）
+- MySQL 8（utf8mb4）。数据库与账号自行创建：
+
+```sql
+CREATE DATABASE linkory CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'linkory'@'%' IDENTIFIED BY '<强密码>';
+GRANT ALL PRIVILEGES ON linkory.* TO 'linkory'@'%';
+```
+
+表结构由服务端启动时自动迁移，无需手工建表。
+
+## 2. 用 Docker Compose 部署
+
+```sh
+cd deploy
+cp .env.example .env      # 填写 LINKORY_MYSQL_DSN 与 LINKORY_JWT_SECRET
+docker compose up -d --build
+curl http://127.0.0.1:8080/healthz     # {"status":"ok",...}
+```
+
+- DSN 必须带 `parseTime=true&loc=UTC`；数据库在宿主机时用 `host.docker.internal` 访问。
+- `LINKORY_JWT_SECRET` 请固定下来（`openssl rand -hex 32`）。未设置时服务端使用随机密钥，重启后所有登录失效；compose 中已将其设为必填。
+- 查看日志：`docker compose logs -f server`；升级：`git pull && docker compose up -d --build`；停止：`docker compose down`。
+
+## 3. 不用 Docker
+
+```sh
+cd linkory-server
+export LINKORY_MYSQL_DSN='...' LINKORY_JWT_SECRET='...' LINKORY_ADDR=':8080'
+go run ./cmd/linkory-server        # 或 go build 后运行二进制
+```
+
+## 4. 环境变量
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `LINKORY_MYSQL_DSN` | 无（必填） | MySQL 连接串 |
+| `LINKORY_ADDR` | `:8080` | 监听地址 |
+| `LINKORY_JWT_SECRET` | 随机 | JWT 签名密钥，至少 32 字节 |
+| `LINKORY_ACCESS_TTL` | `15m` | access token 有效期 |
+| `LINKORY_REFRESH_TTL` | `720h` | refresh token 有效期 |
+| `LINKORY_OFFLINE_MSG_TTL` | `720h` | 未送达离线消息保留期 |
+| `LINKORY_MAX_TRANSFER_BYTES` | `2147483648` | 单文件大小上限（2 GiB） |
+
+> 如服务端配置项有变动，以 `linkory-server/internal/config/config.go` 为准。
+
+## 5. 公网访问：HTTPS / WSS 反向代理
+
+生产环境必须使用 HTTPS（WebSocket 走 WSS），不要把 8080 直接暴露到公网。nginx 示例：
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name linkory.example.com;
+    # ssl_certificate / ssl_certificate_key ...
+
+    client_max_body_size 0;          # 文件流式上传不限制大小
+    proxy_request_buffering off;     # 上传不缓冲到磁盘
+    proxy_buffering off;             # 下载不缓冲
+
+    location /api/v1/ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 120s;     # 客户端 30s 心跳，需大于 90s
+    }
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_read_timeout 3600s;    # 大文件传输
+        proxy_send_timeout 3600s;
+    }
+}
+```
+
+客户端「服务器地址」填 `https://linkory.example.com`。
+
+## 6. 运维
+
+- **备份**：只需备份 MySQL 的 `linkory` 库（账号、设备、消息、任务元数据）。
+- **清理**：服务端每小时清理超过保留期、未送达的离线消息；过期的传输任务会自动标记 EXPIRED。
+- **多实例**：当前在线状态保存在进程内存，仅支持单实例；多实例需要引入 Redis（见开发计划）。
+- **安全**：密码使用 Argon2id；refresh token 轮换且库内只存哈希；移除设备后其凭证立即失效。日志不记录密码、令牌与消息内容。
+
+## 7. 验收清单
+
+1. `GET /healthz` 返回 ok。
+2. 客户端注册、登录，第二台设备登录同一账号，互相可见（AT-01/02）。
+3. 互发消息，一端断网再恢复后补发且不重复（AT-03/04/05）。
+4. 发送文件，接收端确认后完成，校验一致（AT-07/08）。
+5. 移除设备后，旧凭证访问返回 401（AT-11）。

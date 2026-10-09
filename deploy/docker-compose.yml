@@ -1,8 +1,16 @@
-# 使用宿主机已有的 MySQL（不在 compose 内新增数据库）
+# 服务端容器。数据库使用宿主机/外部已有的 MySQL（不在 compose 内新增数据库）。
+# 必填：LINKORY_MYSQL_DSN、LINKORY_JWT_SECRET（>=32 字节，固定后重启不会使登录失效）。
+# 可选：LINKORY_PORT（宿主机映射端口，默认 8080）、GOPROXY（构建时 Go 代理）。
 services:
   server:
-    build: ../linkory-server
+    build:
+      context: ../linkory-server
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    restart: unless-stopped
     environment:
+      LINKORY_ADDR: ":8080"
       LINKORY_MYSQL_DSN: ${LINKORY_MYSQL_DSN:?set LINKORY_MYSQL_DSN, host DB is reachable as host.docker.internal}
+      LINKORY_JWT_SECRET: ${LINKORY_JWT_SECRET:?set LINKORY_JWT_SECRET (>= 32 bytes)}
     extra_hosts: ["host.docker.internal:host-gateway"]
-    ports: ["8080:8080"]
+    ports: ["${LINKORY_PORT:-8080}:8080"]

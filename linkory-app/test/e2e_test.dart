@@ -29,6 +29,7 @@ Future<ProviderContainer> client(String name, Directory saveDir) async {
 }
 
 void main() {
+  bigTest();
   test('two devices: login, presence, messaging, file transfer', () async {
     final user = 'e2e${Random().nextInt(1 << 30)}';
     const pw = 'correct-horse-9';
@@ -80,4 +81,44 @@ void main() {
     await sa.removeDevice(idb);
     await until(() => b.read(sessionProvider).status == AuthStatus.loggedOut, what: 'b logged out after removal', seconds: 20);
   }, skip: url == null ? 'set LINKORY_E2E_URL' : false, timeout: const Timeout(Duration(seconds: 90)));
+}
+
+// Large-file check (PRD AT-07/08, 1 GB target): LINKORY_E2E_BIG_MB=1024
+final bigMb = int.tryParse(Platform.environment['LINKORY_E2E_BIG_MB'] ?? '');
+
+void bigTest() {
+  test('large file relay keeps memory flat and hash matches', () async {
+    final user = 'big${Random().nextInt(1 << 30)}';
+    const pw = 'correct-horse-9';
+    final tmp = await Directory.systemTemp.createTemp('linkory_big');
+    addTearDown(() => tmp.delete(recursive: true));
+    final a = await client('a', Directory('${tmp.path}/a'));
+    final b = await client('b', Directory('${tmp.path}/b'));
+    await a.read(sessionProvider.notifier).register(url!, user, pw);
+    await a.read(sessionProvider.notifier).login(url!, user, pw);
+    await b.read(sessionProvider.notifier).login(url!, user, pw);
+    final sa = a.read(storeProvider.notifier), sb = b.read(storeProvider.notifier);
+    await sa.start();
+    await sb.start();
+    final idb = b.read(sessionProvider).deviceId;
+    await until(() => a.read(storeProvider).isOnline(idb), what: 'presence');
+
+    final src = File('${tmp.path}/big.bin');
+    final sink = src.openWrite();
+    final chunk = List<int>.generate(1 << 20, (i) => (i * 31) & 0xff);
+    for (var i = 0; i < bigMb!; i++) {
+      sink.add(chunk);
+    }
+    await sink.close();
+
+    final sw = Stopwatch()..start();
+    await sa.sendFile(idb, src.path);
+    await until(() => b.read(storeProvider).transfers.any((t) => t.status == 'WAITING_ACCEPT'), what: 'invite', seconds: 120);
+    await sb.accept(b.read(storeProvider).transfers.first);
+    await until(() => b.read(storeProvider).transfers.first.status == 'COMPLETED', what: 'completed', seconds: 900);
+    // ignore: avoid_print
+    print('transferred $bigMb MB in ${sw.elapsed.inSeconds}s, rss=${ProcessInfo.currentRss ~/ (1 << 20)} MB');
+    final dst = File('${tmp.path}/b/big.bin');
+    expect(await dst.length(), src.lengthSync());
+  }, skip: url == null || bigMb == null ? 'set LINKORY_E2E_URL and LINKORY_E2E_BIG_MB' : false, timeout: const Timeout(Duration(minutes: 20)));
 }
