@@ -5,6 +5,7 @@
 import FlutterMacOS
 import Foundation
 
+import cryptography_flutter
 import desktop_drop
 import file_picker_darwin
 import flutter_secure_storage_darwin
@@ -15,6 +16,7 @@ import tray_manager
 import window_manager
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
+  CryptographyFlutterPlugin.register(with: registry.registrar(forPlugin: "CryptographyFlutterPlugin"))
   DesktopDropPlugin.register(with: registry.registrar(forPlugin: "DesktopDropPlugin"))
   FilePickerPlugin.register(with: registry.registrar(forPlugin: "FilePickerPlugin"))
   FlutterSecureStorageDarwinPlugin.register(with: registry.registrar(forPlugin: "FlutterSecureStorageDarwinPlugin"))

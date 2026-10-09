@@ -72,8 +72,20 @@ class Transfer {
     required this.sha256,
     this.bytes = 0,
     this.error = '',
+    this.mode = 'relay',
+    this.lanSecret = '',
+    this.lanAddrs = const [],
+    this.lanPort = 0,
   });
   final String id, sender, receiver, fileName, sha256;
+
+  /// relay | lan — which path carried (or is carrying) the file.
+  String mode;
+
+  /// Per-task secret + receiver endpoint for the same-network direct path (from the server).
+  final String lanSecret;
+  final List<String> lanAddrs;
+  final int lanPort;
   final int size;
   final DateTime createdAt;
   String status, error;
@@ -97,6 +109,10 @@ class Transfer {
         sha256: j['sha256'],
         status: j['status'],
         error: j['error'] ?? '',
+        mode: j['mode'] ?? 'relay',
+        lanSecret: j['lan_secret'] ?? '',
+        lanAddrs: ((j['receiver_lan'] as Map?)?['addrs'] as List?)?.cast<String>() ?? const [],
+        lanPort: ((j['receiver_lan'] as Map?)?['port'] as num?)?.toInt() ?? 0,
         createdAt: DateTime.parse(j['created_at']).toLocal(),
       );
 }

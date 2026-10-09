@@ -53,7 +53,7 @@ Device dev(String id, String name, String type, {bool current = false}) => Devic
     id: id, name: name, type: type, osVersion: '14.5', appVersion: '0.1.0', status: 'offline', current: current, lastSeenAt: DateTime(2026, 10, 8, 18, 30));
 
 AppState fixtureState({Section section = Section.chats, String? peer = 'win'}) {
-  final now = DateTime.now();
+  final now = DateTime(2025, 3, 14, 10, 30); // fixed: goldens must not depend on the wall clock
   return AppState(
     devices: [
       dev('mac', '洪明伟的 MacBook Pro', 'macos', current: true),
@@ -73,7 +73,7 @@ AppState fixtureState({Section section = Section.chats, String? peer = 'win'}) {
         ChatMessage(clientId: '3', peerId: 'win', mine: true, type: 'clipboard', content: 'https://linkory.example.com/invite/8f3a2c', createdAt: now.subtract(const Duration(minutes: 3)), status: MsgStatus.serverReceived),
         ChatMessage(clientId: '4', peerId: 'win', mine: true, type: 'text', content: '再发一条试试重试', createdAt: now.subtract(const Duration(minutes: 1)), status: MsgStatus.failed),
       ],
-      'phone': [ChatMessage(clientId: '5', peerId: 'phone', mine: false, type: 'text', content: '到家了', createdAt: now.subtract(const Duration(days: 1)))],
+      'phone': [ChatMessage(clientId: '5', peerId: 'phone', mine: false, type: 'text', content: '到家了', createdAt: now.subtract(const Duration(days: 1, hours: 2)))],
     },
     transfers: [
       Transfer(id: 't1', sender: 'mac', receiver: 'win', fileName: '季度报表-final.xlsx', size: 4823551, sha256: 'a', status: 'TRANSFERRING', createdAt: now.subtract(const Duration(minutes: 2)), bytes: 2200000),

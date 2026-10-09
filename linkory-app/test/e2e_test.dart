@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:linkory_app/core/lan/lan.dart';
 import 'package:linkory_app/core/models.dart';
 import 'package:linkory_app/core/session.dart';
 import 'package:linkory_app/core/store.dart';
@@ -70,6 +71,24 @@ void main() {
         what: 'transfer completed', seconds: 30);
     final dst = File('${tmp.path}/b/src.bin');
     expect(await dst.readAsBytes(), await src.readAsBytes());
+    // Same machine, same network: the file should have gone over the direct path.
+    final hasLan = (await localLanAddresses()).isNotEmpty;
+    expect(a.read(storeProvider).transfers.first.mode, hasLan ? 'lan' : 'relay');
+    expect(b.read(storeProvider).transfers.first.mode, hasLan ? 'lan' : 'relay');
+
+    // Relay-only mode forces the server path even on the same network.
+    await sa.setTransferMode('relay');
+    await sb.setTransferMode('relay');
+    final src2 = File('${tmp.path}/relay.bin');
+    await src2.writeAsBytes(List<int>.generate(700000, (i) => i & 0xff));
+    await sa.sendFile(idb, src2.path);
+    await until(() => b.read(storeProvider).transfers.any((t) => t.fileName == 'relay.bin' && t.status == 'WAITING_ACCEPT'), what: 'relay invite');
+    await sb.accept(b.read(storeProvider).transfers.firstWhere((t) => t.fileName == 'relay.bin'));
+    await until(() => a.read(storeProvider).transfers.firstWhere((t) => t.fileName == 'relay.bin').status == 'COMPLETED', what: 'relay completed', seconds: 30);
+    expect(a.read(storeProvider).transfers.firstWhere((t) => t.fileName == 'relay.bin').mode, 'relay');
+    expect(await File('${tmp.path}/b/relay.bin').readAsBytes(), await src2.readAsBytes());
+    await sa.setTransferMode('auto');
+    await sb.setTransferMode('auto');
 
     // Rejected transfer.
     await sa.sendFile(idb, src.path);

@@ -91,6 +91,10 @@ class TransferCard extends ConsumerWidget {
                 task.status == 'TRANSFERRING' ? '${statusLabel(task)} ${(progress * 100).floor()}%' : statusLabel(task),
                 style: Type.caption.copyWith(color: color),
               ),
+              if (task.mode == 'lan' && (task.active || ok)) ...[
+                const SizedBox(width: 8),
+                const LBadge('局域网直连'),
+              ],
               if (detail.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Text(detail, style: Type.caption.copyWith(color: c.text3)),

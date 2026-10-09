@@ -4,10 +4,12 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart' as crypto;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import 'api.dart';
+import 'lan/lan.dart';
 import 'log.dart';
 import 'models.dart';
 import 'realtime.dart';
@@ -27,6 +29,7 @@ class AppState {
     this.search = '',
     this.error,
     this.saveDir = '',
+    this.transferMode = 'auto',
   });
   final List<Device> devices;
   final Set<String> online;
@@ -38,6 +41,9 @@ class AppState {
   final String search;
   final String? error;
   final String saveDir;
+
+  /// auto = try same-network direct first, relay otherwise; lan = direct only; relay = server relay only.
+  final String transferMode;
 
   static const _keep = Object();
 
@@ -52,6 +58,7 @@ class AppState {
     String? search,
     Object? error = _keep,
     String? saveDir,
+    String? transferMode,
   }) =>
       AppState(
         devices: devices ?? this.devices,
@@ -64,6 +71,7 @@ class AppState {
         search: search ?? this.search,
         error: identical(error, _keep) ? this.error : error as String?,
         saveDir: saveDir ?? this.saveDir,
+        transferMode: transferMode ?? this.transferMode,
       );
 
   Device? device(String id) => devices.where((d) => d.id == id).firstOrNull;
@@ -112,7 +120,7 @@ class AppStore extends Notifier<AppState> {
     _localPaths.addAll(_loadMap(p.getString('send_paths')));
     _hiddenMsgs = (p.getStringList('hidden_msgs') ?? const []).toSet();
     _hiddenTasks = (p.getStringList('hidden_tasks') ?? const []).toSet();
-    return AppState(saveDir: p.getString('save_dir') ?? _defaultSaveDir());
+    return AppState(saveDir: p.getString('save_dir') ?? _defaultSaveDir(), transferMode: p.getString('transfer_mode') ?? 'auto');
   }
 
   late Map<String, String> _savedPaths; // receiver: task id -> saved file path
@@ -150,15 +158,121 @@ class AppStore extends Notifier<AppState> {
     _stSub ??= _rt.stateStream.listen((s) {
       state = state.copyWith(link: s);
       Log.info('ws', s.name);
-      if (s == LinkState.connected) refreshAll();
+      if (s == LinkState.connected) {
+        refreshAll();
+        unawaited(_reportLan());
+      }
     });
     _rt.start();
     await refreshAll();
+    await _startLan();
+  }
+
+  // ---- same-network direct transfer -------------------------------------------------------
+
+  LanListener? _lan;
+  Timer? _lanTimer;
+  String _lastReport = '';
+  final Set<String> _lanAccepted = {}; // tasks this device accepted: the only ones the listener serves
+  final Set<String> _lanBusy = {}; // tasks with a live direct session
+  final Set<String> _lanDone = {};
+
+  Future<void> _startLan() async {
+    if (_lan != null || kIsWeb || state.transferMode == 'relay') return;
+    try {
+      _lan = await LanListener.bind(_lanHooks());
+      Log.info('lan', 'listening on ${_lan!.port}');
+      await _reportLan();
+      _lanTimer?.cancel();
+      _lanTimer = Timer.periodic(const Duration(seconds: 60), (_) => _reportLan()); // network changes
+    } catch (e) {
+      Log.warn('lan', 'listener unavailable: ${e.runtimeType}');
+    }
+  }
+
+  Future<void> _reportLan({bool force = false}) async {
+    final l = _lan;
+    if (l == null || state.link != LinkState.connected) return;
+    final addrs = await localLanAddresses();
+    if (addrs.isEmpty) return;
+    final key = '${addrs.join(',')}:${l.port}';
+    if (!force && key == _lastReport) return;
+    if (_rt.send('lan.report', {'addrs': addrs, 'port': l.port})) _lastReport = key;
+  }
+
+  LanHooks _lanHooks() => LanHooks(
+        lookup: (id) {
+          final t = _transfer(id);
+          if (t == null || t.receiver != _self || t.lanSecret.isEmpty || !_lanAccepted.contains(id)) return null;
+          if (t.status != 'ACCEPTED' && t.status != 'TRANSFERRING') return null;
+          return LanIncoming(
+              taskId: id,
+              secret: hexToBytes(t.lanSecret),
+              size: t.size,
+              sha256: t.sha256,
+              part: File('${state.saveDir}${Platform.pathSeparator}.$id.lan.part'));
+        },
+        onStart: (id) {
+          _lanBusy.add(id);
+          _active.remove(id)?.close(); // the sender will not use the relay while the direct path works
+          _transfer(id)?.mode = 'lan';
+          unawaited(_api.request('POST', '/transfers/$id/lan/start').then((_) {}, onError: (_) {}));
+          Log.info('lan', 'direct session started');
+        },
+        onProgress: _applyProgress,
+        onVerified: (id, part) async {
+          final t = _transfer(id);
+          if (t == null) return false;
+          try {
+            final target = await _uniqueTarget(Directory(state.saveDir), t.fileName);
+            await part.rename(target.path);
+            _savedPaths[id] = target.path;
+            t.savedPath = target.path;
+            _lanDone.add(id);
+            unawaited(_persist());
+            await _api.request('POST', '/transfers/$id/complete', body: {'via': 'lan'});
+            return true;
+          } catch (e) {
+            Log.warn('lan', 'finalize failed: ${e.runtimeType}');
+            return false;
+          }
+        },
+        onFailed: (id, {required corrupt}) {
+          _lanBusy.remove(id);
+          final t = _transfer(id);
+          if (t == null || !t.active || _lanDone.contains(id)) return;
+          Log.warn('lan', 'direct session ended (corrupt=$corrupt)');
+          if (state.transferMode == 'lan') {
+            unawaited(_fail(t, 'direct transfer failed'));
+            return;
+          }
+          // Give the sender a moment to reconnect and resume; otherwise pull through the relay.
+          Future.delayed(Duration(seconds: corrupt ? 0 : 5), () {
+            final cur = _transfer(id);
+            if (cur != null && cur.active && !_lanBusy.contains(id) && !_active.containsKey(id)) unawaited(_download(cur));
+          });
+        },
+      );
+
+  Future<void> setTransferMode(String mode) async {
+    await ref.read(prefsProvider).setString('transfer_mode', mode);
+    state = state.copyWith(transferMode: mode);
+    if (mode == 'relay') {
+      _lanTimer?.cancel();
+      await _lan?.close();
+      _lan = null;
+      _lastReport = '';
+    } else {
+      await _startLan();
+    }
   }
 
   void stop() {
     _rt.stop();
-    state = AppState(saveDir: state.saveDir);
+    _lanTimer?.cancel();
+    unawaited(_lan?.close());
+    _lan = null;
+    state = AppState(saveDir: state.saveDir, transferMode: state.transferMode);
   }
 
   Future<void> refreshAll() async {
@@ -406,28 +520,32 @@ class AppStore extends Notifier<AppState> {
 
   Transfer? _transfer(String id) => state.transfers.where((t) => t.id == id).firstOrNull;
 
+  /// Shared by relay progress events and direct-session progress.
+  void _applyProgress(String id, int b) {
+    final t = _transfer(id);
+    if (t == null) return;
+    final now = DateTime.now();
+    final last = _sample[id];
+    t.startedAt ??= now;
+    if (t.status == 'ACCEPTED') t.status = 'TRANSFERRING';
+    if (last != null) {
+      final dt = now.difference(last.$1).inMilliseconds / 1000;
+      if (dt > 0.2) {
+        final inst = (b - last.$2) / dt;
+        t.speed = t.speed == 0 ? inst : t.speed * 0.6 + inst * 0.4;
+        _sample[id] = (now, b);
+      }
+    } else {
+      _sample[id] = (now, b);
+    }
+    t.bytes = b;
+    state = state.copyWith(transfers: [...state.transfers]);
+  }
+
   void _onTransferEvent(WsEvent e) {
     final d = e.data;
     if (e.type == 'transfer.progress') {
-      final t = _transfer(d['id']);
-      if (t != null) {
-        final now = DateTime.now();
-        final b = (d['bytes'] as num).toInt();
-        final last = _sample[t.id];
-        t.startedAt ??= now;
-        if (last != null) {
-          final dt = now.difference(last.$1).inMilliseconds / 1000;
-          if (dt > 0.2) {
-            final inst = (b - last.$2) / dt;
-            t.speed = t.speed == 0 ? inst : t.speed * 0.6 + inst * 0.4;
-            _sample[t.id] = (now, b);
-          }
-        } else {
-          _sample[t.id] = (now, b);
-        }
-        t.bytes = b;
-        state = state.copyWith(transfers: [...state.transfers]);
-      }
+      _applyProgress(d['id'], (d['bytes'] as num).toInt());
       return;
     }
     if (d['id'] == null) return;
@@ -447,13 +565,58 @@ class AppStore extends Notifier<AppState> {
     if (e.type == 'transfer.offer' && t.receiver == _self && !_hiddenTasks.contains(t.id)) {
       ref.read(notifyProvider)('${state.device(t.sender)?.name ?? '设备'} 想发送文件', '${t.fileName}（${t.size} 字节）');
     }
-    if (e.type == 'transfer.accept' && t.sender == _self) _upload(t);
+    if (e.type == 'transfer.accept' && t.sender == _self) unawaited(_startSend(t));
     if (!t.active) _active.remove(t.id)?.close();
   }
 
   Future<void> accept(Transfer t) async {
-    await _api.request('POST', '/transfers/${t.id}/accept');
-    unawaited(_download(t));
+    _lanAccepted.add(t.id); // before the request: the sender may connect the moment it hears of the accept
+    try {
+      await _api.request('POST', '/transfers/${t.id}/accept');
+    } catch (_) {
+      _lanAccepted.remove(t.id);
+      rethrow;
+    }
+    // Pull through the relay right away; if the sender reaches us directly, that request is dropped.
+    if (state.transferMode != 'lan') unawaited(_download(t));
+  }
+
+  /// Sender: same-network direct first (with resume), relay as the fallback (PRD 4.7).
+  Future<void> _startSend(Transfer t) async {
+    final path = _localPaths[t.id];
+    if (path == null) return;
+    final mode = state.transferMode;
+    if (mode != 'relay' && t.lanSecret.isNotEmpty && t.lanAddrs.isNotEmpty && t.lanPort > 0) {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final out = await lanSend(
+          addrs: t.lanAddrs,
+          port: t.lanPort,
+          taskId: t.id,
+          secret: hexToBytes(t.lanSecret),
+          file: File(path),
+          onProgress: (b) => _applyProgress(t.id, b),
+          cancelled: () => !(_transfer(t.id)?.active ?? false),
+        );
+        if (out == LanSendOutcome.ok) {
+          Log.info('lan', 'sent directly');
+          return; // the receiver completes the task with the server
+        }
+        if (!(_transfer(t.id)?.active ?? false)) return; // cancelled meanwhile
+        if (out == LanSendOutcome.rejected) break;
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      if (mode == 'lan') {
+        state = state.copyWith(error: '局域网直连失败（当前设置为仅局域网）');
+        await cancel(t);
+        return;
+      }
+      Log.info('lan', 'direct path unavailable, using relay');
+    } else if (mode == 'lan') {
+      state = state.copyWith(error: '对方设备不在同一局域网，无法直连（当前设置为仅局域网）');
+      await cancel(t);
+      return;
+    }
+    await _upload(t);
   }
 
   Future<void> reject(Transfer t) => _api.request('POST', '/transfers/${t.id}/reject');

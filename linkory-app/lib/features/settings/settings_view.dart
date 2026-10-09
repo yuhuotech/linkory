@@ -105,7 +105,24 @@ class SettingsView extends ConsumerWidget {
             ]),
           ),
           item('同名文件', t('自动重命名，不覆盖已有文件')),
-          item('传输方式', t('公网中转（局域网直连将在后续版本提供）')),
+          item(
+            '传输方式',
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              for (final m in const [('auto', '自动选择'), ('lan', '仅局域网'), ('relay', '仅公网中转')]) ...[
+                LButton(
+                  label: m.$2,
+                  compact: true,
+                  variant: st.transferMode == m.$1 ? BtnVariant.solid : BtnVariant.neutral,
+                  onPressed: () => ref.read(storeProvider.notifier).setTransferMode(m.$1),
+                ),
+                const SizedBox(width: 6),
+              ],
+            ]),
+          ),
+          item(
+              '说明',
+              Text('自动选择：同一局域网内优先直连（端到端加密，速度更快），不可用时自动回退服务端中转。',
+                  style: Type.caption.copyWith(color: c.text3))),
         ],
       SettingsTab.about => [
           item('版本', t('0.1.0')),
