@@ -60,6 +60,10 @@ tools/cross_e2e.sh                  # 跨主机联调：本机 ↔ 服务器上�
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
+## 应用内更新
+
+`lib/core/updater.dart`（检查、下载、SHA-256 校验）+ `update_install.dart`（各平台安装）+ `features/update/update_ui.dart`（设置页与对话框）。每小时用 ETag 条件请求查 GitHub Releases（`/releases?per_page=15`，默认含/不含预发布取决于当前版本是否预发布），有新版本时侧栏设置按钮上方出现箭头，点击弹出对话框（立即更新 / 前往下载页 / 忽略此版本）。安装方式：macOS 解压 `…-macos.zip` 后由脱离的 shell 在本进程退出后替换 `.app` 并重开；Windows 静默运行 Inno 安装包（升级同 AppId，`[Run]` 里 `Check: WizardSilent` 负责重启应用）；Linux 用 `apt-get install ./….deb`（先 `sudo -n`，否则 `pkexec`），非 deb 安装则解压 tar.gz；Android 经 FileProvider 交给系统安装器。版本号来自 `--dart-define=LINKORY_VERSION`（CI 传 tag）；Android `versionCode` 用 `github.run_number`，必须递增。**macOS 版不再沙盒**（沙盒进程创建的文件会被强制打隔离标记，更新后的应用打不开；AppDelegate 首次启动会把旧容器里的偏好迁移出来）。本地演练：`--dart-define=LINKORY_UPDATE_API=<假 feed>` + `LINKORY_UPDATE_AUTOINSTALL=true`。
+
 ## UI 规范（强制，完整版见 [`docs/UI_SPEC.md`](docs/UI_SPEC.md)）
 
 视觉完整复刻 cc-switch（v7 设计系统），唯一差异是布局改为微信式三栏。**写任何 Flutter UI 前先读 `docs/UI_SPEC.md`。**

@@ -245,7 +245,8 @@ jobs:
         run: |
           V="${VERSION#v}"
           flutter pub get
-          flutter build apk --release --build-name="${V%%-*}" --dart-define=LINKORY_VERSION="$V"
+          # versionCode must grow with every release or Android refuses to install the update over the old app.
+          flutter build apk --release --build-name="${V%%-*}" --build-number="${{ github.run_number }}" --dart-define=LINKORY_VERSION="$V"
           mkdir -p ../dist
           cp build/app/outputs/flutter-apk/app-release.apk "../dist/Linkory-$V-android.apk"
       - uses: actions/upload-artifact@v4

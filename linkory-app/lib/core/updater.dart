@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'log.dart';
@@ -295,8 +296,8 @@ class UpdateNotifier extends Notifier<UpdateState> {
       );
       Log.info('update', newer == null ? 'up to date ($appVersion)' : 'found ${newer.tag}');
       if (newer != null && updateAutoInstall) unawaited(install());
-    } catch (e) {
-      Log.warn('update', 'check failed: ${e.runtimeType}');
+    } catch (e, st) {
+      Log.error('update', 'check failed: $e', st);
       state = state.copyWith(phase: UpdatePhase.idle, error: manual ? '检查更新失败：${_msg(e)}' : null);
     }
   }
@@ -321,7 +322,9 @@ class UpdateNotifier extends Notifier<UpdateState> {
       final want = sha256For((await http.get(Uri.parse(sums.url)).timeout(const Duration(seconds: 30))).body, asset.name);
       if (want == null) throw 'SHA256SUMS.txt 中没有 ${asset.name}';
 
-      final dir = await Directory.systemTemp.createTemp('linkory-update-');
+      // Android: the app cache dir (what the installer's FileProvider exposes); elsewhere the system temp.
+      final base = Platform.isAndroid ? await getTemporaryDirectory() : Directory.systemTemp;
+      final dir = await base.createTemp('linkory-update-');
       final file = File('${dir.path}${Platform.pathSeparator}${asset.name}');
       _dl = http.Client();
       final req = http.Request('GET', Uri.parse(asset.url))..headers['User-Agent'] = 'linkory/$appVersion';

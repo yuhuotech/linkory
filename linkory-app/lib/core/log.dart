@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'version.dart';
+
 /// Local file log (PRD 4.10). Never log passwords, tokens or message/file contents (PRD §7).
 class Log {
   static File? _file;
@@ -23,7 +25,7 @@ class Log {
         f.renameSync(old.path);
       }
       _file = f;
-      info('app', 'started ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
+      info('app', 'started v$appVersion ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
     } catch (_) {}
   }
 

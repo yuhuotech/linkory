@@ -409,7 +409,7 @@ class _PeerList extends ConsumerWidget {
         final last = st.messages[d.id]?.lastOrNull;
         final selected = forChat ? st.selectedPeer == d.id : picked == d.id;
         final sub = forChat
-            ? (last == null ? (online ? '在线' : '离线') : '${last.mine ? '' : ''}${last.type == 'clipboard' ? '[剪贴板] ' : ''}${last.content.replaceAll('\n', ' ')}')
+            ? (last == null ? (online ? '在线' : '离线') : '${last.mine ? '你：' : ''}${last.type == 'clipboard' ? '[剪贴板] ' : ''}${last.content.replaceAll('\n', ' ')}')
             : '${deviceTypeLabel(d.type)} · ${d.current ? (guest ? '本机 · 未登录' : '本机') : online ? '在线' : '离线'}';
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 1),

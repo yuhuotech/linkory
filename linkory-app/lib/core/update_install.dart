@@ -71,7 +71,9 @@ NEW=${_q(fresh.path)}
 OLD="\$BUNDLE.old.\$\$"
 echo "swap \$BUNDLE"
 mv "\$BUNDLE" "\$OLD" || exit 1
-if /usr/bin/ditto "\$NEW" "\$BUNDLE"; then
+# A rename keeps the signed bundle byte-for-byte (the stage dir is on the same volume); copying
+# from inside the sandbox can be refused for framework symlinks, so it is only the fallback.
+if mv "\$NEW" "\$BUNDLE" || cp -R "\$NEW" "\$BUNDLE"; then
   /usr/bin/xattr -cr "\$BUNDLE" 2>/dev/null
   rm -rf "\$OLD"
   echo "updated"
@@ -79,7 +81,8 @@ else
   echo "copy failed, restoring"
   rm -rf "\$BUNDLE"; mv "\$OLD" "\$BUNDLE"
 fi
-/usr/bin/open "\$BUNDLE"
+# LaunchServices needs a moment after the bundle changed ("Resource busy"): retry.
+for i in 1 2 3 4 5 6 7 8; do /usr/bin/open "\$BUNDLE" && break; sleep 1; done
 rm -rf ${_q(zip.parent.path)}
 ''');
   }
