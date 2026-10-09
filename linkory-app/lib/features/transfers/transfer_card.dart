@@ -46,7 +46,20 @@ class TransferCard extends ConsumerWidget {
       actions.add(LButton(label: '拒绝', compact: true, onPressed: () => store.reject(task)));
     } else if (task.active) {
       actions.add(LButton(label: '取消', compact: true, onPressed: () => store.cancel(task)));
+    } else {
+      if (ok && incoming && task.savedPath != null) {
+        actions.add(LButton(label: '显示文件', compact: true, icon: LucideIcons.folderOpen, onPressed: () => store.openSavedFile(task)));
+      }
+      if (store.canRetry(task)) {
+        actions.add(LButton(label: '重试', compact: true, icon: LucideIcons.rotateCw, onPressed: () => store.retryTransfer(task)));
+      }
+      actions.add(LIconButton(icon: LucideIcons.x, tooltip: '移除记录（不删除已保存的文件）', size: 28, iconSize: 14, onPressed: () => store.removeTransferRecord(task)));
     }
+    final elapsed = task.startedAt == null ? null : (task.finishedAt ?? DateTime.now()).difference(task.startedAt!);
+    final detail = [
+      if (task.status == 'TRANSFERRING' && task.speed > 0) '${fmtBytes(task.speed.round())}/s',
+      if (elapsed != null && elapsed.inSeconds > 0) '耗时 ${fmtDuration(elapsed)}',
+    ].join(' · ');
 
     return PanelCard(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -78,6 +91,10 @@ class TransferCard extends ConsumerWidget {
                 task.status == 'TRANSFERRING' ? '${statusLabel(task)} ${(progress * 100).floor()}%' : statusLabel(task),
                 style: Type.caption.copyWith(color: color),
               ),
+              if (detail.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(detail, style: Type.caption.copyWith(color: c.text3)),
+              ],
             ]),
             if (task.status == 'TRANSFERRING' || task.status == 'VERIFYING') ...[
               const SizedBox(height: 6),

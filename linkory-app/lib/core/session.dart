@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'secrets.dart';
 
 const defaultServer = 'http://127.0.0.1:8090';
 
@@ -41,11 +42,13 @@ final sessionProvider = NotifierProvider<SessionController, SessionState>(Sessio
 /// Owns login state, persisted credentials and this device's identity key.
 class SessionController extends Notifier<SessionState> {
   late SharedPreferences _p;
+  late Secrets _sec;
 
   @override
   SessionState build() {
     _p = ref.read(prefsProvider);
-    final access = _p.getString('access'), refresh = _p.getString('refresh');
+    _sec = ref.read(secretsProvider);
+    final access = _sec.get('access'), refresh = _sec.get('refresh');
     final loggedIn = access != null && refresh != null && _p.getString('device_id') != null;
     return SessionState(
       status: loggedIn ? AuthStatus.loggedIn : AuthStatus.loggedOut,
@@ -57,7 +60,7 @@ class SessionController extends Notifier<SessionState> {
 
   /// Called once after the providers are wired so the API client holds the persisted tokens.
   void restoreTokens(ApiClient api) {
-    final a = _p.getString('access'), r = _p.getString('refresh');
+    final a = _sec.get('access'), r = _sec.get('refresh');
     if (a != null && r != null) api.tokens = Tokens(a, r);
   }
 
@@ -103,14 +106,14 @@ class SessionController extends Notifier<SessionState> {
 
   void _authLost() {
     ref.read(apiProvider).tokens = null;
-    _p.remove('access');
-    _p.remove('refresh');
+    _sec.remove('access');
+    _sec.remove('refresh');
     state = state.copyWith(status: AuthStatus.loggedOut);
   }
 
   Future<void> _saveTokens(Tokens t) async {
-    await _p.setString('access', t.access);
-    await _p.setString('refresh', t.refresh);
+    await _sec.set('access', t.access);
+    await _sec.set('refresh', t.refresh);
   }
 
   String _norm(String s) {
@@ -122,12 +125,12 @@ class SessionController extends Notifier<SessionState> {
   // The identity key never leaves the device; only the public half is registered.
   Future<String> _publicKey() async {
     final alg = Ed25519();
-    var seedB64 = _p.getString('key_seed');
+    var seedB64 = _sec.get('key_seed');
     final KeyPair pair;
     if (seedB64 == null) {
       pair = await alg.newKeyPair();
       final seed = await (pair as SimpleKeyPair).extractPrivateKeyBytes();
-      await _p.setString('key_seed', base64Encode(seed));
+      await _sec.set('key_seed', base64Encode(seed));
     } else {
       pair = await alg.newKeyPairFromSeed(base64Decode(seedB64));
     }

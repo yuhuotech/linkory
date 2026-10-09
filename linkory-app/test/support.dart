@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:linkory_app/core/models.dart';
 import 'package:linkory_app/core/realtime.dart';
+import 'package:linkory_app/core/secrets.dart';
 import 'package:linkory_app/core/session.dart';
 import 'package:linkory_app/core/store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -84,8 +85,12 @@ AppState fixtureState({Section section = Section.chats, String? peer = 'win'}) {
 
 Future<List<Override>> overrides(AppState s, {AuthStatus auth = AuthStatus.loggedIn}) async {
   SharedPreferences.setMockInitialValues({
-    if (auth == AuthStatus.loggedIn) ...{'access': 'a', 'refresh': 'r', 'device_id': 'mac', 'username': 'hongmw'},
+    if (auth == AuthStatus.loggedIn) ...{'device_id': 'mac', 'username': 'hongmw'},
   });
   final prefs = await SharedPreferences.getInstance();
-  return [prefsProvider.overrideWithValue(prefs), storeProvider.overrideWith(() => FakeStore(s))];
+  return [
+    prefsProvider.overrideWithValue(prefs),
+    secretsProvider.overrideWithValue(Secrets.memory(auth == AuthStatus.loggedIn ? {'access': 'a', 'refresh': 'r'} : {})),
+    storeProvider.overrideWith(() => FakeStore(s)),
+  ];
 }

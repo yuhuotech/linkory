@@ -40,3 +40,8 @@ String deviceTypeLabel(String t) => switch (t) {
       'ios' => 'iOS',
       _ => t,
     };
+
+String fmtDuration(Duration d) {
+  if (d.inHours > 0) return '${d.inHours}:${two(d.inMinutes % 60)}:${two(d.inSeconds % 60)}';
+  return '${two(d.inMinutes)}:${two(d.inSeconds % 60)}';
+}

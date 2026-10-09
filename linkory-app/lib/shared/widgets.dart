@@ -321,12 +321,15 @@ class PageHeader extends StatelessWidget {
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.border))),
       child: Row(children: [
         if (leading != null) ...[leading!, const SizedBox(width: 10)],
-        Flexible(child: Text(title, style: Type.title.copyWith(color: c.text1), overflow: TextOverflow.ellipsis)),
-        if (subtitle != null) ...[
-          const SizedBox(width: 8),
-          Text(subtitle!, style: Type.body.copyWith(color: c.text3)),
-        ],
-        const Spacer(),
+        Expanded(
+          child: Row(children: [
+            Flexible(child: Text(title, style: Type.title.copyWith(color: c.text1), overflow: TextOverflow.ellipsis)),
+            if (subtitle != null) ...[
+              const SizedBox(width: 8),
+              Text(subtitle!, style: Type.body.copyWith(color: c.text3)),
+            ],
+          ]),
+        ),
         for (final a in actions) ...[const SizedBox(width: 8), a],
       ]),
     );
@@ -368,4 +371,55 @@ class _PanelCardState extends State<PanelCard> {
 
 Future<void> copyText(BuildContext context, String text) async {
   await Clipboard.setData(ClipboardData(text: text));
+}
+
+/// Dialog shell: radius 14, border, title + body + right-aligned actions (cc-switch dialog).
+class LDialog extends StatelessWidget {
+  const LDialog({super.key, required this.title, required this.body, required this.confirm, required this.onConfirm, this.danger = false});
+  final String title, confirm;
+  final Widget body;
+  final VoidCallback onConfirm;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Dialog(
+      backgroundColor: c.bgCard,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.dialog), side: BorderSide(color: c.border)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: Type.title.copyWith(color: c.text1)),
+            const SizedBox(height: 14),
+            body,
+            const SizedBox(height: 20),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              LButton(label: '取消', onPressed: () => Navigator.pop(context)),
+              const SizedBox(width: 8),
+              LButton(label: confirm, variant: danger ? BtnVariant.destructive : BtnVariant.solid, onPressed: onConfirm),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class ConfirmDialog extends StatelessWidget {
+  const ConfirmDialog({super.key, required this.title, required this.message, required this.confirmLabel, this.destructive = false});
+  final String title, message, confirmLabel;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) => LDialog(
+        title: title,
+        body: Text(message, style: Type.body.copyWith(color: context.c.text2)),
+        confirm: confirmLabel,
+        danger: destructive,
+        onConfirm: () => Navigator.pop(context, true),
+      );
 }

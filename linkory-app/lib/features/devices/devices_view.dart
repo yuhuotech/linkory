@@ -80,7 +80,7 @@ class DevicesView extends ConsumerWidget {
     final ctl = TextEditingController(text: d.name);
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => _Dialog(
+      builder: (ctx) => LDialog(
         title: '重命名设备',
         body: LTextField(controller: ctl, autofocus: true, onSubmitted: (v) => Navigator.pop(ctx, v)),
         confirm: '保存',
@@ -98,7 +98,7 @@ class DevicesView extends ConsumerWidget {
   Future<void> _remove(BuildContext context, WidgetRef ref, Device d) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => _Dialog(
+      builder: (ctx) => LDialog(
         title: '移除设备',
         body: Text('移除「${d.name}」后，它的登录凭证立即失效，需要重新登录才能再次使用。', style: Type.body.copyWith(color: ctx.c.text2)),
         confirm: '移除',
@@ -107,40 +107,5 @@ class DevicesView extends ConsumerWidget {
       ),
     );
     if (ok == true) await ref.read(storeProvider.notifier).removeDevice(d.id);
-  }
-}
-
-class _Dialog extends StatelessWidget {
-  const _Dialog({required this.title, required this.body, required this.confirm, required this.onConfirm, this.danger = false});
-  final String title, confirm;
-  final Widget body;
-  final VoidCallback onConfirm;
-  final bool danger;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return Dialog(
-      backgroundColor: c.bgCard,
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.dialog), side: BorderSide(color: c.border)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: Type.title.copyWith(color: c.text1)),
-            const SizedBox(height: 14),
-            body,
-            const SizedBox(height: 20),
-            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              LButton(label: '取消', onPressed: () => Navigator.pop(context)),
-              const SizedBox(width: 8),
-              LButton(label: confirm, variant: danger ? BtnVariant.destructive : BtnVariant.solid, onPressed: onConfirm),
-            ]),
-          ]),
-        ),
-      ),
-    );
   }
 }

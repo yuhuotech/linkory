@@ -47,6 +47,11 @@ class TransfersView extends ConsumerWidget {
         }).toList();
     return Column(children: [
       PageHeader(title: '传输中心', subtitle: f.label, actions: [
+        LButton(
+            label: '清除记录',
+            compact: true,
+            icon: LucideIcons.trash2,
+            onPressed: all.any((t) => !t.active) ? () => ref.read(storeProvider.notifier).clearFinishedTransfers() : null),
         LIconButton(icon: LucideIcons.refreshCw, tooltip: '刷新', onPressed: () => ref.read(storeProvider.notifier).loadTransfers()),
       ]),
       Expanded(

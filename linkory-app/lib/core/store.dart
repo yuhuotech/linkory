@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -76,6 +77,9 @@ final realtimeProvider = Provider<Realtime>((ref) {
   return rt;
 });
 
+/// Shows a system notification (desktop wires the real one; default is a no-op).
+final notifyProvider = Provider<void Function(String title, String body)>((_) => (_, _) {});
+
 final storeProvider = NotifierProvider<AppStore, AppState>(AppStore.new);
 
 final _rnd = Random.secure();
@@ -103,7 +107,31 @@ class AppStore extends Notifier<AppState> {
       _stSub?.cancel();
     });
     final p = ref.read(prefsProvider);
+    _savedPaths = _loadMap(p.getString('saved_paths'));
+    _localPaths.addAll(_loadMap(p.getString('send_paths')));
+    _hiddenMsgs = (p.getStringList('hidden_msgs') ?? const []).toSet();
+    _hiddenTasks = (p.getStringList('hidden_tasks') ?? const []).toSet();
     return AppState(saveDir: p.getString('save_dir') ?? _defaultSaveDir());
+  }
+
+  late Map<String, String> _savedPaths; // receiver: task id -> saved file path
+  late Set<String> _hiddenMsgs, _hiddenTasks; // locally deleted records (server history is kept)
+
+  static Map<String, String> _loadMap(String? raw) {
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map).cast<String, String>();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _persist() async {
+    final p = ref.read(prefsProvider);
+    await p.setString('saved_paths', jsonEncode(_savedPaths));
+    await p.setString('send_paths', jsonEncode(_localPaths));
+    await p.setStringList('hidden_msgs', _hiddenMsgs.toList());
+    await p.setStringList('hidden_tasks', _hiddenTasks.toList());
   }
 
   String _defaultSaveDir() {
@@ -147,7 +175,11 @@ class AppStore extends Notifier<AppState> {
 
   Future<void> loadTransfers() async {
     final j = await _api.request('GET', '/transfers', query: {'limit': '100'});
-    state = state.copyWith(transfers: (j['transfers'] as List).map((e) => Transfer.fromJson(e)).toList());
+    final list = (j['transfers'] as List).map((e) => Transfer.fromJson(e)).where((t) => !_hiddenTasks.contains(t.id)).toList();
+    for (final t in list) {
+      t.savedPath = _savedPaths[t.id];
+    }
+    state = state.copyWith(transfers: list);
   }
 
   void setSection(Section s) => state = state.copyWith(section: s);
@@ -163,6 +195,7 @@ class AppStore extends Notifier<AppState> {
     try {
       final j = await _api.request('GET', '/messages', query: {'peer_device_id': peer, 'limit': '100'});
       final server = (j['messages'] as List).map((e) => ChatMessage.fromServer(e, _self)).toList().reversed.toList();
+      server.removeWhere((m) => _hiddenMsgs.contains(m.clientId));
       final known = server.map((m) => m.clientId).toSet();
       final pending = (state.messages[peer] ?? [])
           .where((m) => (m.status == MsgStatus.sending || m.status == MsgStatus.failed) && !known.contains(m.clientId));
@@ -246,14 +279,33 @@ class AppStore extends Notifier<AppState> {
         }
       case 'message.receive':
         final m = ChatMessage.fromServer(d, _self);
+        if (_hiddenMsgs.contains(m.clientId)) return;
+        final isNew = _find(m.clientId) == null;
         _upsert(m);
         _rt.send('message.delivered', {'message_id': m.id}); // stored locally → confirm delivery
+        if (isNew && !m.mine) {
+          ref.read(notifyProvider)(state.device(m.peerId)?.name ?? '新消息', m.type == 'clipboard' ? '[剪贴板] ${m.content}' : m.content);
+        }
         if (state.selectedPeer == null) state = state.copyWith(selectedPeer: m.peerId);
       case 'error':
         state = state.copyWith(error: d['message']?.toString());
       default:
         if (e.type.startsWith('transfer.')) _onTransferEvent(e);
     }
+  }
+
+  Future<void> deleteMessage(ChatMessage m) async {
+    _hiddenMsgs.add(m.clientId);
+    _setMsgs(m.peerId, [...?state.messages[m.peerId]]..removeWhere((x) => x.clientId == m.clientId));
+    await _persist();
+  }
+
+  Future<void> clearConversation(String peer) async {
+    for (final m in state.messages[peer] ?? const <ChatMessage>[]) {
+      _hiddenMsgs.add(m.clientId);
+    }
+    _setMsgs(peer, []);
+    await _persist();
   }
 
   ChatMessage? _find(String? clientId) {
@@ -269,6 +321,7 @@ class AppStore extends Notifier<AppState> {
 
   final Map<String, String> _localPaths = {}; // outgoing: task id -> source path
   final Map<String, http.Client> _active = {};
+  final Map<String, (DateTime, int)> _sample = {}; // speed sampling per task
 
   Future<void> sendFile(String peer, String path) async {
     final f = File(path);
@@ -280,9 +333,67 @@ class AppStore extends Notifier<AppState> {
       final t = Transfer.fromJson(j);
       _localPaths[t.id] = path;
       _addTransfer(t);
+      unawaited(_persist());
     } on ApiException catch (e) {
       state = state.copyWith(error: e.code == 'receiver_offline' ? '目标设备不在线，暂不支持离线文件' : e.message);
     }
+  }
+
+  /// PRD FILE-002: several files become several independent tasks.
+  Future<void> sendFiles(String peer, Iterable<String> paths) async {
+    for (final p in paths) {
+      if (await FileSystemEntity.type(p) == FileSystemEntityType.file) await sendFile(peer, p);
+    }
+  }
+
+  /// PRD FILE-006: retry creates a new task from the original source file.
+  Future<void> retryTransfer(Transfer t) async {
+    final path = _localPaths[t.id];
+    if (path == null || !File(path).existsSync()) {
+      state = state.copyWith(error: '源文件已不存在，无法重试');
+      return;
+    }
+    await sendFile(t.receiver, path);
+  }
+
+  bool canRetry(Transfer t) =>
+      t.sender == _self && !t.active && t.status != 'COMPLETED' && _localPaths[t.id] != null;
+
+  /// PRD 4.9: clearing records never deletes saved files.
+  Future<void> clearFinishedTransfers() async {
+    final done = state.transfers.where((t) => !t.active).toList();
+    _hiddenTasks.addAll(done.map((t) => t.id));
+    state = state.copyWith(transfers: state.transfers.where((t) => t.active).toList());
+    await _persist();
+  }
+
+  Future<void> removeTransferRecord(Transfer t) async {
+    if (t.active) return;
+    _hiddenTasks.add(t.id);
+    state = state.copyWith(transfers: state.transfers.where((x) => x.id != t.id).toList());
+    await _persist();
+  }
+
+  Future<void> openSavedFile(Transfer t) async {
+    final path = t.savedPath;
+    if (path == null || !File(path).existsSync()) {
+      state = state.copyWith(error: '文件已被移动或删除');
+      return;
+    }
+    // PRD 4.6: never auto-open; only on explicit user action.
+    await _reveal(path);
+  }
+
+  Future<void> _reveal(String path) async {
+    try {
+      if (Platform.isMacOS) {
+        await Process.run('open', ['-R', path]);
+      } else if (Platform.isWindows) {
+        await Process.run('explorer', ['/select,', path]);
+      } else {
+        await Process.run('xdg-open', [File(path).parent.path]);
+      }
+    } catch (_) {}
   }
 
   void _addTransfer(Transfer t) => state = state.copyWith(transfers: [t, ...state.transfers.where((x) => x.id != t.id)]);
@@ -294,15 +405,42 @@ class AppStore extends Notifier<AppState> {
     if (e.type == 'transfer.progress') {
       final t = _transfer(d['id']);
       if (t != null) {
-        t.bytes = (d['bytes'] as num).toInt();
+        final now = DateTime.now();
+        final b = (d['bytes'] as num).toInt();
+        final last = _sample[t.id];
+        t.startedAt ??= now;
+        if (last != null) {
+          final dt = now.difference(last.$1).inMilliseconds / 1000;
+          if (dt > 0.2) {
+            final inst = (b - last.$2) / dt;
+            t.speed = t.speed == 0 ? inst : t.speed * 0.6 + inst * 0.4;
+            _sample[t.id] = (now, b);
+          }
+        } else {
+          _sample[t.id] = (now, b);
+        }
+        t.bytes = b;
         state = state.copyWith(transfers: [...state.transfers]);
       }
       return;
     }
     if (d['id'] == null) return;
     final t = Transfer.fromJson(d);
-    t.bytes = _transfer(t.id)?.bytes ?? 0;
+    final prev = _transfer(t.id);
+    t.bytes = prev?.bytes ?? 0;
+    t.savedPath = prev?.savedPath ?? _savedPaths[t.id];
+    t.startedAt = prev?.startedAt;
+    t.speed = prev?.speed ?? 0;
+    if (!t.active) {
+      t.finishedAt = prev?.finishedAt ?? DateTime.now();
+      _sample.remove(t.id);
+      t.speed = 0;
+      if (t.status == 'COMPLETED') t.bytes = t.size;
+    }
     _addTransfer(t);
+    if (e.type == 'transfer.offer' && t.receiver == _self && !_hiddenTasks.contains(t.id)) {
+      ref.read(notifyProvider)('${state.device(t.sender)?.name ?? '设备'} 想发送文件', '${t.fileName}（${t.size} 字节）');
+    }
     if (e.type == 'transfer.accept' && t.sender == _self) _upload(t);
     if (!t.active) _active.remove(t.id)?.close();
   }
@@ -372,6 +510,9 @@ class AppStore extends Notifier<AppState> {
       }
       final target = await _uniqueTarget(dir, t.fileName);
       await part.rename(target.path);
+      _savedPaths[t.id] = target.path;
+      _transfer(t.id)?.savedPath = target.path;
+      unawaited(_persist());
       await _api.request('POST', '/transfers/${t.id}/complete');
     } on FileSystemException catch (e) {
       await _fail(t, e.message.contains('space') ? 'disk full' : 'write error');

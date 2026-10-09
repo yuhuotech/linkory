@@ -79,6 +79,13 @@ class Transfer {
   String status, error;
   int bytes;
 
+  /// Receiver side: where the finished file was saved. Local only.
+  String? savedPath;
+
+  /// Local progress sampling for speed / elapsed time (PRD 4.9).
+  DateTime? startedAt, finishedAt;
+  double speed = 0; // bytes per second, smoothed
+
   bool get active => const {'WAITING_ACCEPT', 'ACCEPTED', 'TRANSFERRING', 'VERIFYING'}.contains(status);
 
   factory Transfer.fromJson(Map<String, dynamic> j) => Transfer(
