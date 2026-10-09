@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -7,9 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app/app.dart';
 import 'core/desktop.dart';
 import 'core/log.dart';
+import 'core/notifications.dart';
 import 'core/secrets.dart';
 import 'core/session.dart';
-import 'core/store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,11 +26,24 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final secrets = await Secrets.load(prefs);
   final desktop = await DesktopShell.init(prefs);
+
+  // Notifications: Apple systems and Android use the platform service; Windows / Linux use toast
+  // notifications. The desktop part also drives the Dock / launcher badge, window title and tray.
+  SystemNotifier notifier = const NoopNotifier();
+  final desktopNotifier = desktop == null ? null : DesktopNotifier(desktop, toasts: !Platform.isMacOS);
+  if (MobileMacNotifier.supported) {
+    final n = MobileMacNotifier(desktopNotifier);
+    await n.init();
+    notifier = n;
+  } else if (desktopNotifier != null) {
+    notifier = desktopNotifier;
+  }
+
   runApp(ProviderScope(
     overrides: [
       prefsProvider.overrideWithValue(prefs),
       secretsProvider.overrideWithValue(secrets),
-      if (desktop != null) notifyProvider.overrideWithValue(desktop.notify),
+      systemNotifierProvider.overrideWithValue(notifier),
     ],
     child: const LinkoryApp(),
   ));

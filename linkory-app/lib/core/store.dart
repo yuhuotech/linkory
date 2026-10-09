@@ -4,13 +4,14 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart' as crypto;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import 'api.dart';
 import 'lan/lan.dart';
 import 'log.dart';
+import 'notifications.dart';
 import '../shared/format.dart';
 import 'models.dart';
 import 'realtime.dart';
@@ -32,6 +33,9 @@ class AppState {
     this.saveDir = '',
     this.transferMode = 'auto',
     this.autoAccept = true,
+    this.unread = const {},
+    this.notifyEnabled = true,
+    this.notifyPreview = true,
   });
   final List<Device> devices;
   final Set<String> online;
@@ -50,6 +54,13 @@ class AppState {
   /// Accept incoming files without asking (default). Offers only come from your own devices.
   final bool autoAccept;
 
+  /// Unread messages / incoming files per conversation (peer device id → count), persisted.
+  final Map<String, int> unread;
+
+  /// Raise notifications for new messages; and whether they show the content (privacy).
+  final bool notifyEnabled, notifyPreview;
+  int get totalUnread => unread.values.fold(0, (a, b) => a + b);
+
   static const _keep = Object();
 
   AppState copyWith({
@@ -65,6 +76,9 @@ class AppState {
     String? saveDir,
     String? transferMode,
     bool? autoAccept,
+    Map<String, int>? unread,
+    bool? notifyEnabled,
+    bool? notifyPreview,
   }) =>
       AppState(
         devices: devices ?? this.devices,
@@ -79,6 +93,9 @@ class AppState {
         saveDir: saveDir ?? this.saveDir,
         transferMode: transferMode ?? this.transferMode,
         autoAccept: autoAccept ?? this.autoAccept,
+        unread: unread ?? this.unread,
+        notifyEnabled: notifyEnabled ?? this.notifyEnabled,
+        notifyPreview: notifyPreview ?? this.notifyPreview,
       );
 
   Device? device(String id) => devices.where((d) => d.id == id).firstOrNull;
@@ -93,8 +110,35 @@ final realtimeProvider = Provider<Realtime>((ref) {
   return rt;
 });
 
-/// Shows a system notification (desktop wires the real one; default is a no-op).
-final notifyProvider = Provider<void Function(String title, String body)>((_) => (_, _) {});
+/// A short in-app banner for a message that arrives while another conversation is open.
+class Toast {
+  const Toast({required this.id, required this.peerId, required this.title, required this.body, required this.count});
+  final int id, count;
+  final String peerId, title, body;
+}
+
+class ToastNotifier extends Notifier<Toast?> {
+  Timer? _t;
+  int _n = 0;
+  @override
+  Toast? build() {
+    ref.onDispose(() => _t?.cancel());
+    return null;
+  }
+
+  void show(String peerId, String title, String body, int count) {
+    _t?.cancel();
+    state = Toast(id: ++_n, peerId: peerId, title: title, body: body, count: count);
+    _t = Timer(const Duration(seconds: 5), dismiss);
+  }
+
+  void dismiss() {
+    _t?.cancel();
+    if (state != null) state = null;
+  }
+}
+
+final toastProvider = NotifierProvider<ToastNotifier, Toast?>(ToastNotifier.new);
 
 final storeProvider = NotifierProvider<AppStore, AppState>(AppStore.new);
 
@@ -127,7 +171,27 @@ class AppStore extends Notifier<AppState> {
     _localPaths.addAll(_loadMap(p.getString('send_paths')));
     _hiddenMsgs = (p.getStringList('hidden_msgs') ?? const []).toSet();
     _hiddenTasks = (p.getStringList('hidden_tasks') ?? const []).toSet();
-    return AppState(saveDir: p.getString('save_dir') ?? _defaultSaveDir(), transferMode: p.getString('transfer_mode') ?? 'auto', autoAccept: p.getBool('auto_accept') ?? true);
+    // Becoming active again while a conversation is on screen reads it.
+    ref.listen(appActiveProvider, (_, active) {
+      if (active) _readVisible();
+    });
+    return AppState(
+      saveDir: p.getString('save_dir') ?? _defaultSaveDir(),
+      transferMode: p.getString('transfer_mode') ?? 'auto',
+      autoAccept: p.getBool('auto_accept') ?? true,
+      unread: _loadCounts(p.getString('unread_counts')),
+      notifyEnabled: p.getBool('notify_enabled') ?? true,
+      notifyPreview: p.getBool('notify_preview') ?? true,
+    );
+  }
+
+  static Map<String, int> _loadCounts(String? raw) {
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map).map((k, v) => MapEntry('$k', (v as num).toInt()));
+    } catch (_) {
+      return {};
+    }
   }
 
   late Map<String, String> _savedPaths; // receiver: task id -> saved file path
@@ -172,6 +236,7 @@ class AppStore extends Notifier<AppState> {
       }
     });
     _rt.start();
+    unawaited(ref.read(systemNotifierProvider).setUnread(state.totalUnread));
     await refreshAll();
     await _startLan();
   }
@@ -285,7 +350,16 @@ class AppStore extends Notifier<AppState> {
     _lanTimer?.cancel();
     unawaited(_lan?.close());
     _lan = null;
-    state = AppState(saveDir: state.saveDir, transferMode: state.transferMode, autoAccept: state.autoAccept, section: state.section); // stay on the current page after sign-out
+    _alerts.clear();
+    state = AppState(
+      saveDir: state.saveDir,
+      transferMode: state.transferMode,
+      autoAccept: state.autoAccept,
+      section: state.section, // stay on the current page after sign-out
+      notifyEnabled: state.notifyEnabled,
+      notifyPreview: state.notifyPreview,
+    );
+    unawaited(_syncUnread());
   }
 
   Future<void> refreshAll() async {
@@ -311,12 +385,16 @@ class AppStore extends Notifier<AppState> {
     state = state.copyWith(transfers: list);
   }
 
-  void setSection(Section s) => state = state.copyWith(section: s);
+  void setSection(Section s) {
+    state = state.copyWith(section: s);
+    _readVisible();
+  }
   void setSearch(String s) => state = state.copyWith(search: s);
   void clearError() => state = state.copyWith(error: null);
 
   Future<void> selectPeer(String id) async {
     state = state.copyWith(selectedPeer: id, section: Section.chats);
+    _readVisible();
     await loadHistory(id);
   }
 
@@ -345,6 +423,91 @@ class AppStore extends Notifier<AppState> {
       list.add(m);
     }
     _setMsgs(m.peerId, list);
+  }
+
+  @visibleForTesting
+  void debugEvent(String type, Map<String, dynamic> data) => _onEvent(WsEvent(type, data));
+  @visibleForTesting
+  void debugSet(AppState s) => state = s;
+
+  // ---- new-message alerts -------------------------------------------------------------------
+  //
+  // The model is iMessage / WeChat's:
+  //  * the conversation on screen in a focused window never alerts (it is simply read);
+  //  * anything else counts as unread: list badge, Dock / launcher / tray count, window title;
+  //  * focused window, other conversation  -> a small in-app banner (no system notification);
+  //  * window in the background / minimised / hidden to the tray -> a system notification, one per
+  //    conversation (a newer one replaces the older), several messages in a burst become one.
+
+  final _alerts = <String, ({int n, String title, String body, Timer timer})>{};
+
+  bool get _viewing => ref.read(appActiveProvider) && state.section == Section.chats && state.selectedPeer != null;
+
+  void _readVisible() {
+    if (_viewing) markRead(state.selectedPeer!);
+  }
+
+  void markRead(String peerId) {
+    _alerts.remove(peerId)?.timer.cancel();
+    final t = ref.read(toastProvider);
+    if (t != null && t.peerId == peerId) ref.read(toastProvider.notifier).dismiss();
+    unawaited(ref.read(systemNotifierProvider).clear(peerId));
+    if (!state.unread.containsKey(peerId)) return;
+    state = state.copyWith(unread: {...state.unread}..remove(peerId));
+    unawaited(_syncUnread());
+  }
+
+  Future<void> _syncUnread() async {
+    await ref.read(prefsProvider).setString('unread_counts', jsonEncode(state.unread));
+    await ref.read(systemNotifierProvider).setUnread(state.totalUnread);
+  }
+
+  /// Open a conversation from a notification or banner.
+  Future<void> openConversation(String peerId) async {
+    ref.read(toastProvider.notifier).dismiss();
+    if (state.device(peerId) == null) await loadDevices();
+    await selectPeer(peerId);
+  }
+
+  String _alertBody(String text) {
+    if (!state.notifyPreview) return '发来一条新消息';
+    final one = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return one.length > 100 ? '${one.substring(0, 100)}…' : one;
+  }
+
+  void _incoming(String peerId, String text, {bool file = false}) {
+    final active = ref.read(appActiveProvider);
+    if (active && state.section == Section.chats && state.selectedPeer == peerId) return; // already looking at it
+    state = state.copyWith(unread: {...state.unread, peerId: (state.unread[peerId] ?? 0) + 1});
+    unawaited(_syncUnread());
+    if (!state.notifyEnabled) return;
+    final title = state.device(peerId)?.name ?? '新消息';
+    final body = file && !state.notifyPreview ? '发来一个文件' : _alertBody(text);
+    final prev = _alerts[peerId];
+    prev?.timer.cancel();
+    final n = (prev?.n ?? 0) + 1;
+    _alerts[peerId] = (n: n, title: title, body: body, timer: Timer(const Duration(milliseconds: 600), () => _flushAlert(peerId)));
+  }
+
+  void _flushAlert(String peerId) {
+    final a = _alerts.remove(peerId);
+    if (a == null) return;
+    final unread = state.unread[peerId] ?? a.n;
+    if (ref.read(appActiveProvider)) {
+      ref.read(toastProvider.notifier).show(peerId, a.title, a.body, unread);
+    } else {
+      unawaited(ref.read(systemNotifierProvider).show(peerId: peerId, title: a.title, body: a.body, count: unread));
+    }
+  }
+
+  Future<void> setNotifyEnabled(bool on) async {
+    await ref.read(prefsProvider).setBool('notify_enabled', on);
+    state = state.copyWith(notifyEnabled: on);
+  }
+
+  Future<void> setNotifyPreview(bool on) async {
+    await ref.read(prefsProvider).setBool('notify_preview', on);
+    state = state.copyWith(notifyPreview: on);
   }
 
   // ---- messaging --------------------------------------------------------------------------
@@ -412,10 +575,7 @@ class AppStore extends Notifier<AppState> {
         final isNew = _find(m.clientId) == null;
         _upsert(m);
         _rt.send('message.delivered', {'message_id': m.id}); // stored locally → confirm delivery
-        if (isNew && !m.mine) {
-          ref.read(notifyProvider)(state.device(m.peerId)?.name ?? '新消息', m.type == 'clipboard' ? '[剪贴板] ${m.content}' : m.content);
-        }
-        if (state.selectedPeer == null) state = state.copyWith(selectedPeer: m.peerId);
+        if (isNew && !m.mine) _incoming(m.peerId, m.type == 'clipboard' ? '[剪贴板] ${m.content}' : m.content);
       case 'error':
         Log.warn('ws', 'server error ${d['code']}');
         state = state.copyWith(error: d['message']?.toString());
@@ -603,13 +763,17 @@ class AppStore extends Notifier<AppState> {
     }
     _addTransfer(t);
     if (e.type == 'transfer.offer' && t.receiver == _self && !_hiddenTasks.contains(t.id)) {
-      final from = state.device(t.sender)?.name ?? '设备';
-      ref.read(notifyProvider)(state.autoAccept ? '正在接收 $from 发来的文件' : '$from 想发送文件', '${t.fileName}（${fmtBytes(t.size)}）');
       if (state.autoAccept) {
+        // Received on its own; the conversation is told when the file has arrived.
         unawaited(accept(t).catchError((Object err) {
           Log.warn('transfer', 'auto-accept failed: ${err.runtimeType}');
         }));
+      } else {
+        _incoming(t.sender, '想发送文件：${t.fileName}（${fmtBytes(t.size)}）', file: true);
       }
+    }
+    if (e.type == 'transfer.complete' && t.receiver == _self && prev?.status != 'COMPLETED' && !_hiddenTasks.contains(t.id) && state.autoAccept) {
+      _incoming(t.sender, '[文件] ${t.fileName}', file: true);
     }
     if (e.type == 'transfer.accept' && t.sender == _self) unawaited(_startSend(t));
     if (!t.active) _active.remove(t.id)?.close();

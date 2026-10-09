@@ -182,6 +182,44 @@ class SettingsView extends ConsumerWidget {
             ],
           ),
         ),
+        item(
+          '新消息通知',
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LSwitch(
+                value: st.notifyEnabled,
+                onChanged: (v) =>
+                    ref.read(storeProvider.notifier).setNotifyEnabled(v),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '应用在后台时弹出系统通知；窗口在前台但在看别的会话时显示顶部提示',
+                style: Type.body.copyWith(color: c.text2),
+              ),
+            ],
+          ),
+        ),
+        item(
+          '通知显示内容',
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LSwitch(
+                value: st.notifyPreview,
+                onChanged: st.notifyEnabled
+                    ? (v) =>
+                          ref.read(storeProvider.notifier).setNotifyPreview(v)
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                st.notifyPreview ? '通知里显示消息内容' : '只提示「发来一条新消息」，不显示内容',
+                style: Type.body.copyWith(color: c.text2),
+              ),
+            ],
+          ),
+        ),
         if (isDesktop) ...[
           item('关闭窗口时', const _CloseBehaviorPicker()),
           item(

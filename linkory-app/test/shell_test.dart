@@ -266,4 +266,27 @@ void main() {
     expect(find.byType(ImagePreview), findsOneWidget);
     expect(find.descendant(of: find.byType(ImagePreview), matching: find.byType(Image)), findsNothing);
   });
+
+  testWidgets('unread: badge on the conversation row, count on the rail, banner for a message in another conversation', (t) async {
+    final base = fixtureState(peer: 'win');
+    await pumpApp(t, base.copyWith(unread: const {'phone': 3, 'lnx': 120}));
+    expect(find.text('3'), findsWidgets); // row badge for Pixel 9
+    expect(find.text('99+'), findsNWidgets(2), reason: 'counts are capped (row badge and rail badge)');
+    expect(find.byTooltip('设备会话（123 条未读）'), findsOneWidget, reason: 'rail shows the total');
+
+    final c = ProviderScope.containerOf(t.element(find.byType(LinkoryApp)));
+    c.read(toastProvider.notifier).show('phone', 'Pixel 9', '到家了，文件发你了', 3);
+    await t.pump(); // the banner's fade-in starts on this frame…
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('到家了，文件发你了'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/unread_light.png'));
+
+    // Clicking the banner opens that conversation and the banner goes away.
+    await t.tap(find.text('到家了，文件发你了'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    expect(find.text('到家了，文件发你了'), findsNothing);
+    c.read(toastProvider.notifier).dismiss();
+    await t.pump(const Duration(seconds: 6)); // flush the banner's auto-dismiss timer
+  });
 }

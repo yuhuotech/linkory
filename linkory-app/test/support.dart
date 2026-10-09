@@ -35,6 +35,12 @@ class FakeStore extends AppStore {
   @override
   Future<void> refreshAll() async {}
   @override
+  Future<void> openConversation(String peerId) async {
+    ref.read(toastProvider.notifier).dismiss();
+    await selectPeer(peerId);
+  }
+
+  @override
   Future<void> selectPeer(String id) async => state = state.copyWith(selectedPeer: id, section: Section.chats);
   /// Per-task file paths for tests that need a real file on disk.
   static final files = <String, String>{};

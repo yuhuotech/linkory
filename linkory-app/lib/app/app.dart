@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/desktop.dart';
+import '../core/notifications.dart';
 import '../core/session.dart';
 import '../core/store.dart';
 import '../core/updater.dart';
@@ -47,7 +49,7 @@ class _Root extends ConsumerStatefulWidget {
   ConsumerState<_Root> createState() => _RootState();
 }
 
-class _RootState extends ConsumerState<_Root> {
+class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
   late final StoreRef _store = ref.read(storeProvider.notifier);
 
   void _connect() {
@@ -56,8 +58,29 @@ class _RootState extends ConsumerState<_Root> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Phones: "active" means the app is in the foreground. (Desktop windows report focus themselves.)
+    if (Platform.isAndroid || Platform.isIOS) ref.read(appActiveProvider.notifier).set(state == AppLifecycleState.resumed);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    onNotificationTap = null;
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Desktop: the window's focus / minimise / hide events decide whether the user is looking at the app.
+    DesktopShell.instance?.activeSink = (a) => ref.read(appActiveProvider.notifier).set(a);
+    // Clicking a notification brings the window back and opens that conversation.
+    onNotificationTap = (peerId) {
+      unawaited(DesktopShell.instance?.showWindow());
+      unawaited(_store.openConversation(peerId));
+    };
     if (ref.read(sessionProvider).status == AuthStatus.loggedIn) _connect();
     // Hourly update check; works signed out too (the first one waits a moment after launch).
     Future.microtask(() => ref.read(updateProvider.notifier).start());

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dbus/dbus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../shared/close_dialog.dart';
+import 'notifications.dart';
 
 /// Windows and Linux draw their own minimise/maximise/close buttons (the title bar is hidden for a
 /// cleaner look); macOS keeps its native traffic lights.
@@ -27,6 +29,36 @@ class DesktopShell with TrayListener, WindowListener {
   final SharedPreferences _prefs;
 
   static DesktopShell? instance;
+
+  /// Reports whether the window is in front of the user (visible, not minimised, focused).
+  void Function(bool active)? activeSink;
+  bool _focused = true, _minimized = false, _hidden = false;
+  void _publishActive() => activeSink?.call(_focused && !_minimized && !_hidden);
+
+  @override
+  void onWindowFocus() {
+    _focused = true;
+    _minimized = false;
+    _publishActive();
+  }
+
+  @override
+  void onWindowBlur() {
+    _focused = false;
+    _publishActive();
+  }
+
+  @override
+  void onWindowMinimize() {
+    _minimized = true;
+    _publishActive();
+  }
+
+  @override
+  void onWindowRestore() {
+    _minimized = false;
+    _publishActive();
+  }
 
   /// What the window's close button does: `ask` (prompt), `tray` (hide, keep running) or `quit`.
   /// macOS hides to the tray by default; Windows/Linux ask on the first close and remember the answer.
@@ -125,6 +157,10 @@ class DesktopShell with TrayListener, WindowListener {
     await windowManager.setSkipTaskbar(false);
     await windowManager.show();
     await windowManager.focus();
+    _hidden = false;
+    _minimized = false;
+    _focused = true;
+    _publishActive();
   }
 
   /// Close-to-tray: the process keeps running (tray icon, connection, notifications) but the app
@@ -132,23 +168,66 @@ class DesktopShell with TrayListener, WindowListener {
   Future<void> hideToTray() async {
     await windowManager.hide();
     await windowManager.setSkipTaskbar(true);
+    _hidden = true;
+    _publishActive();
   }
 
-  /// Notify only when the user is not already looking at the app.
-  Future<void> notify(String title, String body) async {
+  // ---- unread indicators ------------------------------------------------------------------
+
+  static const _appTitle = '连信 Linkory';
+  static final _unityPath = DBusObjectPath('/com/canonical/unity/launcherentry/1');
+  DBusClient? _session;
+
+  /// Dock badge (macOS), launcher count (Ubuntu Dock / Unity API), window title and tray tooltip.
+  Future<void> applyUnread(int n) async {
     try {
-      if (await windowManager.isVisible() && await windowManager.isFocused()) {
-        return;
-      }
-      final n = LocalNotification(
-        title: title,
-        body: body.length > 120 ? '${body.substring(0, 120)}…' : body,
-      );
-      n.onClick = showWindow;
+      await windowManager.setTitle(n > 0 ? '($n) $_appTitle' : _appTitle);
+    } catch (_) {}
+    try {
+      if (!Platform.isLinux) await trayManager.setToolTip(n > 0 ? '$_appTitle · $n 条未读' : _appTitle);
+      if (Platform.isMacOS) await trayManager.setTitle(n > 0 ? ' $n' : ''); // number next to the menu-bar icon
+    } catch (_) {}
+    try {
+      if (Platform.isMacOS) await windowManager.setBadgeLabel(n > 0 ? '$n' : '');
+      if (Platform.isLinux) await _unityCount(n);
+    } catch (e) {
+      debugPrint('badge failed: $e');
+    }
+  }
+
+  /// com.canonical.Unity.LauncherEntry: honoured by Ubuntu Dock / Dash-to-Dock / KDE task manager.
+  Future<void> _unityCount(int n) async {
+    _session ??= DBusClient.session();
+    await _session!.emitSignal(
+      path: _unityPath,
+      interface: 'com.canonical.Unity.LauncherEntry',
+      name: 'Update',
+      values: [
+        const DBusString('application://com.yuhuo.linkory.desktop'),
+        DBusDict.stringVariant({'count': DBusInt64(n), 'count-visible': DBusBoolean(n > 0)}),
+      ],
+    );
+  }
+
+  final _toasts = <String, LocalNotification>{};
+
+  /// Windows / Linux system notification (macOS uses UserNotifications, see MobileMacNotifier).
+  Future<void> toast(String peerId, String title, String body, void Function() onClick) async {
+    try {
+      await _toasts.remove(peerId)?.close(); // one live notification per conversation
+      final n = LocalNotification(title: title, body: body.length > 120 ? '${body.substring(0, 120)}…' : body);
+      n.onClick = onClick;
+      _toasts[peerId] = n;
       await n.show();
     } catch (e) {
       debugPrint('notify failed: $e');
     }
+  }
+
+  Future<void> closeToast(String peerId) async {
+    try {
+      await _toasts.remove(peerId)?.close();
+    } catch (_) {}
   }
 
   // ---- launch at login -------------------------------------------------------------------
@@ -272,4 +351,27 @@ class DesktopShell with TrayListener, WindowListener {
         quit();
     }
   }
+}
+
+/// Windows / Linux: toast notifications + launcher badge; macOS: badge only (toasts go through
+/// [MobileMacNotifier]).
+class DesktopNotifier implements SystemNotifier {
+  DesktopNotifier(this.shell, {this.toasts = true});
+  final DesktopShell shell;
+  final bool toasts;
+
+  @override
+  Future<void> show({required String peerId, required String title, required String body, required int count}) async {
+    if (!toasts) return;
+    await shell.toast(peerId, title, count > 1 ? '[$count 条] $body' : body, () async {
+      await shell.showWindow();
+      onNotificationTap?.call(peerId);
+    });
+  }
+
+  @override
+  Future<void> clear(String peerId) => shell.closeToast(peerId);
+
+  @override
+  Future<void> setUnread(int total) => shell.applyUnread(total);
 }

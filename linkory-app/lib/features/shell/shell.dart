@@ -14,6 +14,7 @@ import '../../core/session.dart';
 import '../chat/chat_view.dart';
 import '../devices/devices_view.dart';
 import '../guest/guest.dart';
+import 'toast.dart';
 import '../settings/settings_view.dart';
 import '../update/update_ui.dart';
 import '../transfers/transfers_view.dart';
@@ -41,12 +42,15 @@ class Shell extends ConsumerWidget {
     if (isNarrow(context)) return _NarrowShell(st: st);
     return Scaffold(
       backgroundColor: c.bgApp,
-      body: Row(children: [
-        const _Rail(),
-        _VLine(c.border),
-        const SizedBox(width: listWidth, child: _ListColumn()),
-        _VLine(c.border),
-        Expanded(child: _Content(st: st)),
+      body: Stack(children: [
+        Row(children: [
+          const _Rail(),
+          _VLine(c.border),
+          const SizedBox(width: listWidth, child: _ListColumn()),
+          _VLine(c.border),
+          Expanded(child: _Content(st: st)),
+        ]),
+        const Positioned(top: 60, right: 16, child: MessageToast()),
       ]),
     );
   }
@@ -64,13 +68,16 @@ class _NarrowShell extends ConsumerWidget {
     return Scaffold(
       // The status-bar inset takes the colour of the page below it (list pages use the sidebar tone).
       backgroundColor: st.section == Section.transfers ? c.bgApp : c.bgSidebar,
-      body: SafeArea(
-        bottom: false,
-        child: switch (st.section) {
-          Section.transfers => const TransfersView(),
-          _ => const _ListColumn(),
-        },
-      ),
+      body: Stack(children: [
+        SafeArea(
+          bottom: false,
+          child: switch (st.section) {
+            Section.transfers => const TransfersView(),
+            _ => const _ListColumn(),
+          },
+        ),
+        const Positioned(top: 8, left: 12, right: 12, child: SafeArea(child: MessageToast())),
+      ]),
       bottomNavigationBar: const _BottomNav(),
     );
   }
@@ -113,7 +120,7 @@ class _BottomNav extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 3),
                       decoration: BoxDecoration(color: c.action, borderRadius: BorderRadius.circular(7)),
                       alignment: Alignment.center,
-                      child: Text('$badge', style: Type.badge.copyWith(color: c.actionFg, fontSize: 10, height: 1)),
+                      child: Text(badge > 99 ? '99+' : '$badge', style: Type.badge.copyWith(color: c.actionFg, fontSize: 10, height: 1)),
                     ),
                   ),
                 if (dot)
@@ -136,7 +143,7 @@ class _BottomNav extends ConsumerWidget {
       child: SafeArea(
         top: false,
         child: Row(children: [
-          item(Section.chats, LucideIcons.messageSquare, '会话'),
+          item(Section.chats, LucideIcons.messageSquare, '会话', badge: st.totalUnread),
           item(Section.devices, LucideIcons.laptop, '设备'),
           item(Section.transfers, LucideIcons.arrowLeftRight, '传输', badge: active),
           item(Section.settings, LucideIcons.settings, '设置', dot: updateDot),
@@ -218,7 +225,7 @@ class _Rail extends ConsumerWidget {
         DragArea(child: SizedBox(height: (hasCustomWindowControls || debugShowWindowControls) ? (railWidth - 28) / 2 : 44, width: railWidth)),
         const BrandLogo(),
         const SizedBox(height: 18),
-        nav(Section.chats, LucideIcons.messageSquare, '设备会话'),
+        nav(Section.chats, LucideIcons.messageSquare, st.totalUnread > 0 ? '设备会话（${st.totalUnread} 条未读）' : '设备会话', badge: st.totalUnread),
         const SizedBox(height: 4),
         nav(Section.devices, LucideIcons.laptop, '设备管理'),
         const SizedBox(height: 4),
@@ -288,7 +295,7 @@ class _RailButtonState extends State<_RailButton> {
                     padding: const EdgeInsets.symmetric(horizontal: 3),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(color: c.action, borderRadius: BorderRadius.circular(7)),
-                    child: Text('${widget.badge}', style: Type.badge.copyWith(color: c.actionFg, fontSize: 10, height: 1)),
+                    child: Text(widget.badge > 99 ? '99+' : '${widget.badge}', style: Type.badge.copyWith(color: c.actionFg, fontSize: 10, height: 1)),
                   ),
                 ),
             ]),
@@ -411,6 +418,7 @@ class _PeerList extends ConsumerWidget {
         final guest = ref.watch(isGuestProvider);
         final online = (d.current && !guest) || st.isOnline(d.id);
         final last = st.messages[d.id]?.lastOrNull;
+        final unread = forChat ? (st.unread[d.id] ?? 0) : 0;
         final selected = forChat ? st.selectedPeer == d.id : picked == d.id;
         final sub = forChat
             ? (last == null ? (online ? '在线' : '离线') : '${last.mine ? '你：' : ''}${last.type == 'clipboard' ? '[剪贴板] ' : ''}${last.content.replaceAll('\n', ' ')}')
@@ -445,7 +453,15 @@ class _PeerList extends ConsumerWidget {
                     if (forChat && last != null) Text(fmtListTime(last.createdAt), style: Type.caption.copyWith(color: c.text3)),
                   ]),
                   const SizedBox(height: 2),
-                  Text(sub, style: Type.caption.copyWith(color: c.text3), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Row(children: [
+                    Expanded(
+                      child: Text(sub,
+                          style: Type.caption.copyWith(color: unread > 0 ? c.text2 : c.text3, fontWeight: unread > 0 ? FontWeight.w500 : FontWeight.w400),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    if (forChat && unread > 0) ...[const SizedBox(width: 8), UnreadBadge(unread)],
+                  ]),
                 ]),
               ),
             ]),

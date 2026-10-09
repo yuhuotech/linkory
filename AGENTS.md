@@ -81,7 +81,7 @@ git tag v0.1.0 && git push origin v0.1.0
 ## 客户端架构
 
 - `lib/core/lan/lan.dart`：直连协议的 Dart 实现（`lanSend` / `LanListener`）；`store.dart` 负责发送端先直连后回退、接收端放弃中转请求等编排。
-- `lib/core/desktop.dart`（窗口/托盘/通知/开机启动）与 `log.dart`、`secrets.dart`（钥匙串存凭据）；测试里 `notifyProvider`、`secretsProvider` 默认是空实现/内存实现。
+- `lib/core/desktop.dart`（窗口/托盘/通知/开机启动）与 `log.dart`、`secrets.dart`（钥匙串存凭据）；新消息提醒走 `lib/core/notifications.dart` 的 `SystemNotifier`（测试里 `systemNotifierProvider`、`secretsProvider` 默认是空实现/内存实现），规则见 docs/UI_SPEC.md 第 18 节。
 - `lib/core/`：`api.dart`（401 时自动 refresh）、`session.dart`（登录、设备身份与密钥、存储）、`realtime.dart`（WS、心跳、退避重连）、`store.dart`（`AppStore`：设备、在线状态、消息、传输上传/下载的聚合状态）。状态管理用 Riverpod 3（`Notifier`/`NotifierProvider`，没有 `StateProvider`）。
 - `lib/features/*`：按功能分页面；`shell/shell.dart` 是三栏布局（72px 图标栏 | 280px 列表栏 | 内容区，页头 52px）。
 - UI 风格移植自 cc-switch，规范见上文及 `docs/UI_SPEC.md`；token 在 `lib/theme/tokens.dart`，通用控件在 `lib/shared/widgets.dart`。
