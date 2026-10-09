@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func hexSum(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
@@ -155,5 +156,68 @@ func TestFileTransfer(t *testing.T) {
 	}
 	if _, list := call(h, "GET", "/api/v1/transfers", xTok, nil); len(list["transfers"].([]any)) != 0 {
 		t.Fatal("stranger sees transfers")
+	}
+}
+
+// Direct (same-network) transfer negotiation: the server hands both ends a per-task secret and the
+// receiver's endpoint, and accepts a receiver-verified completion that never used the relay.
+func TestLANNegotiation(t *testing.T) {
+	h := setup(t)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	call(h, "POST", "/api/v1/auth/register", "", map[string]any{"username": "lanuser", "password": "password123"})
+	a, b := login(t, h, "lanuser", "mac"), login(t, h, "lanuser", "win")
+	aTok, bTok := a["access_token"].(string), b["access_token"].(string)
+	bID := b["device_id"].(string)
+	wb, wa := dial(t, srv, bTok), dial(t, srv, aTok)
+	wa.expect("presence.snapshot")
+
+	// Only private/loopback literals survive; a public address must be dropped.
+	wb.send("lan.report", map[string]any{"addrs": []string{"192.168.1.20", "8.8.8.8", "not-an-ip"}, "port": 40123})
+	time.Sleep(200 * time.Millisecond)
+
+	data := []byte("hello direct world")
+	code, task := call(h, "POST", "/api/v1/transfers", aTok, map[string]any{"to_device_id": bID, "file_name": "d.txt", "size": len(data), "sha256": hexSum(data)})
+	if code != 201 {
+		t.Fatalf("create: %d %v", code, task)
+	}
+	secret, _ := task["lan_secret"].(string)
+	if len(secret) != 64 || task["mode"] != "relay" {
+		t.Fatalf("secret/mode: %v", task)
+	}
+	lan, _ := task["receiver_lan"].(map[string]any)
+	if lan == nil || lan["port"].(float64) != 40123 || len(lan["addrs"].([]any)) != 1 || lan["addrs"].([]any)[0] != "192.168.1.20" {
+		t.Fatalf("receiver_lan: %v", task["receiver_lan"])
+	}
+	if offer := wb.expect("transfer.offer"); offer["lan_secret"] != secret {
+		t.Fatalf("receiver must get the same secret: %v", offer)
+	}
+
+	base := srv.URL + "/api/v1/transfers/" + task["id"].(string)
+	// Cannot complete before accepting; the sender cannot complete on the receiver's behalf.
+	if resp, _ := do(t, "POST", base+"/complete", bTok, bytes.NewReader([]byte(`{"via":"lan"}`))); resp.StatusCode != 409 {
+		t.Fatalf("complete before accept: %d", resp.StatusCode)
+	}
+	do(t, "POST", base+"/accept", bTok, nil)
+	if ev := wa.expect("transfer.accept"); ev["receiver_lan"] == nil {
+		t.Fatalf("sender must learn the receiver endpoint on accept: %v", ev)
+	}
+	if resp, _ := do(t, "POST", base+"/complete", aTok, bytes.NewReader([]byte(`{"via":"lan"}`))); resp.StatusCode != 403 {
+		t.Fatalf("sender complete: %d", resp.StatusCode)
+	}
+	if resp, _ := do(t, "POST", base+"/lan/start", aTok, nil); resp.StatusCode != 403 {
+		t.Fatalf("sender lan/start: %d", resp.StatusCode)
+	}
+	if resp, _ := do(t, "POST", base+"/lan/start", bTok, nil); resp.StatusCode != 200 {
+		t.Fatalf("lan/start: %d", resp.StatusCode)
+	}
+	if ev := wa.expect("transfer.start"); ev["mode"] != "lan" || ev["status"] != "TRANSFERRING" {
+		t.Fatalf("start event: %v", ev)
+	}
+	if resp, _ := do(t, "POST", base+"/complete", bTok, bytes.NewReader([]byte(`{"via":"lan"}`))); resp.StatusCode != 200 {
+		t.Fatalf("lan complete: %d", resp.StatusCode)
+	}
+	if ev := wa.expect("transfer.complete"); ev["mode"] != "lan" || ev["status"] != "COMPLETED" {
+		t.Fatalf("complete event: %v", ev)
 	}
 }

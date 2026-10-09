@@ -20,6 +20,7 @@ import (
 type Notifier interface {
 	Send(deviceID, typ string, data any) bool
 	Online(deviceID string) bool
+	LAN(deviceID string) ([]string, int)
 }
 
 type Handler struct {
@@ -58,6 +59,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/transfers/{id}/cancel", m(h.cancel))
 	mux.HandleFunc("POST /api/v1/transfers/{id}/complete", m(h.complete))
 	mux.HandleFunc("POST /api/v1/transfers/{id}/fail", m(h.fail))
+	mux.HandleFunc("POST /api/v1/transfers/{id}/lan/start", m(h.lanStart))
 	mux.HandleFunc("PUT /api/v1/transfers/{id}/data", m(h.upload))
 	mux.HandleFunc("GET /api/v1/transfers/{id}/data", m(h.download))
 }
@@ -89,7 +91,18 @@ func lower(s string) string {
 	return string(b)
 }
 
+// decorate attaches the receiver's current direct-transfer endpoint while a direct attempt is useful.
+func (h *Handler) decorate(t *Task) *Task {
+	if t.Status == WaitingAccept || t.Status == Accepted {
+		if addrs, port := h.Hub.LAN(t.Receiver); port > 0 && len(addrs) > 0 {
+			t.ReceiverLAN = &LANInfo{Addrs: addrs, Port: port}
+		}
+	}
+	return t
+}
+
 func (h *Handler) notifyBoth(t *Task, typ string) {
+	h.decorate(t)
 	h.Hub.Send(t.Sender, typ, t)
 	h.Hub.Send(t.Receiver, typ, t)
 }
@@ -116,7 +129,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		apiutil.Fail(w, apiutil.Err(409, "receiver_offline", "target device is offline"))
 		return
 	}
-	apiutil.JSON(w, 201, t)
+	apiutil.JSON(w, 201, h.decorate(t))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -135,11 +148,16 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		apiutil.Fail(w, err)
 		return
 	}
-	apiutil.JSON(w, 200, t)
+	apiutil.JSON(w, 200, h.decorate(t))
 }
 
 // act loads the task, checks the caller's role, performs the guarded transition and notifies.
 func (h *Handler) act(w http.ResponseWriter, r *http.Request, role, to, event, errMsg string, from ...string) {
+	h.actMode(w, r, role, to, event, errMsg, "", from...)
+}
+
+// actMode is act plus an optional transfer mode recorded atomically with a successful transition.
+func (h *Handler) actMode(w http.ResponseWriter, r *http.Request, role, to, event, errMsg, mode string, from ...string) {
 	p := auth.PrincipalFrom(r.Context())
 	t, err := h.Svc.Get(r.Context(), r.PathValue("id"), p.DeviceID)
 	if err != nil {
@@ -160,12 +178,15 @@ func (h *Handler) act(w http.ResponseWriter, r *http.Request, role, to, event, e
 		apiutil.Fail(w, apiutil.Err(409, "invalid_state", "task is "+cur.Status+", transition not allowed"))
 		return
 	}
+	if mode != "" {
+		h.Svc.SetMode(r.Context(), t.ID, mode)
+	}
 	t, _ = h.Svc.Get(r.Context(), t.ID, p.DeviceID)
 	if to == Cancelled || to == Failed {
 		h.abort(t.ID)
 	}
 	h.notifyBoth(t, event)
-	apiutil.JSON(w, 200, t)
+	apiutil.JSON(w, 200, h.decorate(t))
 }
 
 func (h *Handler) accept(w http.ResponseWriter, r *http.Request) {
@@ -179,8 +200,26 @@ func (h *Handler) cancel(w http.ResponseWriter, r *http.Request) {
 }
 
 // complete: the receiver confirms its own SHA-256 check passed and the file was saved.
+// Body {"via":"lan"} reports a direct transfer that never touched the relay: the receiver verified
+// the declared SHA-256 itself, so completion is allowed straight from ACCEPTED/TRANSFERRING.
 func (h *Handler) complete(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Via string `json:"via"`
+	}
+	_ = apiutil.Decode(r, &req)
+	if req.Via == "lan" {
+		h.actMode(w, r, "receiver", Completed, "transfer.complete", "", "lan", Accepted, Transferring)
+		h.abort(r.PathValue("id"))
+		return
+	}
 	h.act(w, r, "receiver", Completed, "transfer.complete", "", Verifying)
+}
+
+// lanStart: the receiver authenticated a direct connection from the sender. The task moves to
+// TRANSFERRING (so it is not expired while bytes flow peer-to-peer) with mode=lan. If the direct
+// path later breaks, the sender falls back to the relay, which also accepts TRANSFERRING tasks.
+func (h *Handler) lanStart(w http.ResponseWriter, r *http.Request) {
+	h.actMode(w, r, "receiver", Transferring, "transfer.start", "", "lan", Accepted)
 }
 
 // fail: the receiver reports a local failure (checksum mismatch, disk full, ...).
@@ -300,6 +339,8 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 	if ok, _ := h.Svc.Transition(r.Context(), t.ID, Transferring, "", Accepted); ok {
 		cur, _ := h.Svc.Get(r.Context(), t.ID, t.Sender)
 		h.notifyBoth(cur, "transfer.start")
+	} else if t.Mode != "relay" {
+		h.Svc.SetMode(r.Context(), t.ID, "relay") // direct path was abandoned; the relay carries the file
 	}
 
 	hasher := sha256.New()

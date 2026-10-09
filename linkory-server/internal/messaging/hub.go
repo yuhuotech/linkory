@@ -26,6 +26,8 @@ type client struct {
 	out      chan []byte
 	conn     *websocket.Conn
 	cancel   context.CancelFunc
+	lanAddrs []string // where this device accepts direct transfers (guarded by Hub.mu)
+	lanPort  int
 }
 
 // Hub tracks live device connections (single-instance, in-memory presence).
@@ -48,6 +50,25 @@ func (h *Hub) Online(deviceID string) bool {
 	defer h.mu.RUnlock()
 	_, ok := h.clients[deviceID]
 	return ok
+}
+
+// SetLAN stores a device's direct-transfer endpoint for as long as it stays connected.
+func (h *Hub) SetLAN(deviceID string, addrs []string, port int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if c := h.clients[deviceID]; c != nil {
+		c.lanAddrs, c.lanPort = addrs, port
+	}
+}
+
+// LAN returns the device's reported direct-transfer endpoint, if any.
+func (h *Hub) LAN(deviceID string) ([]string, int) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if c := h.clients[deviceID]; c != nil {
+		return c.lanAddrs, c.lanPort
+	}
+	return nil, 0
 }
 
 // Send queues a frame for a device; false when it is offline or its buffer is full.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -153,6 +154,17 @@ func (h *Handler) dispatch(ctx context.Context, c *client, env Envelope) {
 			h.Hub.Send(m.From, "message.delivered", map[string]any{"message_id": m.ID, "client_msg_id": m.ClientMsgID, "delivered_at": m.DeliveredAt})
 		}
 
+	case "lan.report": // device tells the server where it listens for same-network direct transfers
+		var req struct {
+			Addrs []string `json:"addrs"`
+			Port  int      `json:"port"`
+		}
+		if json.Unmarshal(env.Data, &req) != nil || req.Port < 1 || req.Port > 65535 {
+			fail(apiutil.Err(400, "bad_request", "invalid lan.report data"))
+			return
+		}
+		h.Hub.SetLAN(c.deviceID, privateAddrs(req.Addrs), req.Port)
+
 	default:
 		fail(apiutil.Err(400, "unknown_type", "unknown event type "+env.Type))
 	}
@@ -188,4 +200,21 @@ func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiutil.JSON(w, 200, map[string]any{"messages": ms})
+}
+
+// privateAddrs keeps only loopback / private / link-local literals (max 8): a device must not be
+// able to point its peers at arbitrary public hosts.
+func privateAddrs(in []string) []string {
+	out := []string{}
+	for _, a := range in {
+		ip := net.ParseIP(a)
+		if ip == nil || !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+			continue
+		}
+		out = append(out, ip.String())
+		if len(out) == 8 {
+			break
+		}
+	}
+	return out
 }
