@@ -19,7 +19,7 @@ class LinkoryApp extends ConsumerWidget {
     return MaterialApp(
       title: '连信 Linkory',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.system,
+      themeMode: ref.watch(themeModeProvider),
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
       home: switch (auth) {

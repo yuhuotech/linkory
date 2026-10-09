@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -167,3 +168,19 @@ class SessionController extends Notifier<SessionState> {
     }
   }
 }
+
+/// Theme preference: system / light / dark, persisted.
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  @override
+  ThemeMode build() {
+    final v = ref.read(prefsProvider).getString('theme_mode');
+    return ThemeMode.values.where((m) => m.name == v).firstOrNull ?? ThemeMode.system;
+  }
+
+  void set(ThemeMode m) {
+    state = m;
+    ref.read(prefsProvider).setString('theme_mode', m.name);
+  }
+}
+
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);

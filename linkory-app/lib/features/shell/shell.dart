@@ -110,13 +110,8 @@ class _Rail extends ConsumerWidget {
       width: railWidth,
       color: c.bgSidebar,
       child: Column(children: [
-        const SizedBox(height: 44), // room for the macOS traffic lights (cc-switch: h-11 drag zone)
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(color: c.action, borderRadius: BorderRadius.circular(7)),
-          child: Icon(LucideIcons.link2, size: 16, color: c.actionFg),
-        ),
+        const DragArea(child: SizedBox(height: 44, width: railWidth)), // room for the macOS traffic lights (cc-switch: h-11 drag zone)
+        const BrandLogo(),
         const SizedBox(height: 18),
         nav(Section.chats, LucideIcons.messageSquare, '设备会话'),
         const SizedBox(height: 4),

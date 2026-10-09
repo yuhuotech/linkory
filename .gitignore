@@ -5,3 +5,4 @@
 /linkory-app/build/
 .dart_tool/
 .env.local
+linkory-app/test/failures/

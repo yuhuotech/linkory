@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import 'api.dart';
+import 'log.dart';
 import 'models.dart';
 import 'realtime.dart';
 import 'session.dart';
@@ -148,6 +149,7 @@ class AppStore extends Notifier<AppState> {
     _evSub ??= _rt.events.listen(_onEvent);
     _stSub ??= _rt.stateStream.listen((s) {
       state = state.copyWith(link: s);
+      Log.info('ws', s.name);
       if (s == LinkState.connected) refreshAll();
     });
     _rt.start();
@@ -288,6 +290,7 @@ class AppStore extends Notifier<AppState> {
         }
         if (state.selectedPeer == null) state = state.copyWith(selectedPeer: m.peerId);
       case 'error':
+        Log.warn('ws', 'server error ${d['code']}');
         state = state.copyWith(error: d['message']?.toString());
       default:
         if (e.type.startsWith('transfer.')) _onTransferEvent(e);
@@ -335,6 +338,7 @@ class AppStore extends Notifier<AppState> {
       _addTransfer(t);
       unawaited(_persist());
     } on ApiException catch (e) {
+      Log.warn('transfer', 'create failed ${e.code}');
       state = state.copyWith(error: e.code == 'receiver_offline' ? '目标设备不在线，暂不支持离线文件' : e.message);
     }
   }
@@ -383,6 +387,8 @@ class AppStore extends Notifier<AppState> {
     // PRD 4.6: never auto-open; only on explicit user action.
     await _reveal(path);
   }
+
+  Future<void> revealPath(String path) => _reveal(path);
 
   Future<void> _reveal(String path) async {
     try {
@@ -505,6 +511,7 @@ class AppStore extends Notifier<AppState> {
       acc.close();
       if (n != t.size || digest.toString() != t.sha256) {
         await part.delete();
+        Log.warn('transfer', 'checksum mismatch ${t.id}');
         await _fail(t, 'checksum mismatch');
         return;
       }
@@ -517,7 +524,8 @@ class AppStore extends Notifier<AppState> {
     } on FileSystemException catch (e) {
       await _fail(t, e.message.contains('space') ? 'disk full' : 'write error');
       await _tryDelete(part);
-    } catch (_) {
+    } catch (e) {
+      Log.warn('transfer', 'download aborted: ${e.runtimeType}');
       await _tryDelete(part);
     } finally {
       _active.remove(t.id);

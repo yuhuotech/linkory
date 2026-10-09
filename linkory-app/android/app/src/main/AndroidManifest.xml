@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="linkory_app"
+        android:label="连信 Linkory"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

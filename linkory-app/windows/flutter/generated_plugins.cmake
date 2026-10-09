@@ -5,9 +5,9 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
   flutter_secure_storage_windows
-  launch_at_startup
   local_notifier
   screen_retriever_windows
+  tray_manager
   window_manager
 )
 

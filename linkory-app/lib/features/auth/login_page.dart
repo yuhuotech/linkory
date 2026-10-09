@@ -56,12 +56,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           ),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(color: c.action, borderRadius: BorderRadius.circular(8)),
-                child: Icon(LucideIcons.link2, size: 18, color: c.actionFg),
-              ),
+              const BrandLogo(size: 32),
               const SizedBox(width: 10),
               Text('连信 Linkory', style: Type.page.copyWith(color: c.text1)),
             ]),

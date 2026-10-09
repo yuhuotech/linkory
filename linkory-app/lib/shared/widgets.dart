@@ -1,8 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:window_manager/window_manager.dart';
+
+import '../core/desktop.dart';
 
 import '../theme/tokens.dart';
+
+/// Unified brand asset shared by login and the desktop rail.
+class BrandLogo extends StatelessWidget {
+  const BrandLogo({super.key, this.size = 28});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+        'assets/icons/app_128.png',
+        width: size,
+        height: size,
+        filterQuality: FilterQuality.high,
+        semanticLabel: '连信 Linkory',
+      );
+}
 
 enum BtnVariant { solid, neutral, quiet, ghost, destructive }
 
@@ -315,7 +333,7 @@ class PageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    return Container(
+    return DragArea(child: Container(
       height: 52,
       padding: const EdgeInsets.only(left: 24, right: 16),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.border))),
@@ -332,7 +350,7 @@ class PageHeader extends StatelessWidget {
         ),
         for (final a in actions) ...[const SizedBox(width: 8), a],
       ]),
-    );
+    ));
   }
 }
 
@@ -422,4 +440,38 @@ class ConfirmDialog extends StatelessWidget {
         danger: destructive,
         onConfirm: () => Navigator.pop(context, true),
       );
+}
+
+/// Window drag handle for the hidden title bar (desktop only).
+class DragArea extends StatelessWidget {
+  const DragArea({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => isDesktop ? DragToMoveArea(child: child) : child;
+}
+
+/// Toggle: 36x20 track, orange when on (cc-switch Switch).
+class LSwitch extends StatelessWidget {
+  const LSwitch({super.key, required this.value, required this.onChanged});
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onChanged == null ? null : () => onChanged!(!value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 36,
+          height: 20,
+          padding: const EdgeInsets.all(2),
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          decoration: BoxDecoration(color: value ? c.action : c.controlOff, borderRadius: BorderRadius.circular(10)),
+          child: Container(width: 16, height: 16, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+        ),
+      ),
+    );
+  }
 }

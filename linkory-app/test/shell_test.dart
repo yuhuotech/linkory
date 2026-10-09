@@ -15,6 +15,11 @@ Future<void> pumpApp(WidgetTester t, AppState s, {Brightness b = Brightness.ligh
   addTearDown(t.view.reset);
   addTearDown(t.platformDispatcher.clearPlatformBrightnessTestValue);
   await t.pumpWidget(ProviderScope(overrides: await overrides(s, auth: auth), child: const LinkoryApp()));
+  // Wait for the brand asset decoder before comparing the first golden.
+  await t.runAsync(() => precacheImage(
+        const AssetImage('assets/icons/app_128.png'),
+        t.element(find.byType(MaterialApp)),
+      ));
   await t.pump(const Duration(milliseconds: 300));
 }
 

@@ -75,7 +75,7 @@
 └──────┴────────────┴───────────────────────────────┘
 ```
 
-- **图标栏**（72px，`bgSidebar`）：顶部留 44px 给 macOS 红绿灯（可拖拽区）；其下 28×28 橙色品牌方块（圆角 7，白色图标）；导航按钮 48×32、间隔 4，选中为 `bgSelected` 底 + text1 图标，未选中 text2，悬停 `bgSubtle`；活动传输数用橙色角标（高 14，字号 10）；底部依次为连接状态点（8px 圆点：success/warning/danger）与「设置」。
+- **图标栏**（72px，`bgSidebar`）：顶部留 44px 给 macOS 红绿灯（可拖拽区）；其下 28×28 橙底白色双环品牌 Logo（共享控件 `BrandLogo`，固定品牌色，资源自带圆角）；导航按钮 48×32、间隔 4，选中为 `bgSelected` 底 + text1 图标，未选中 text2，悬停 `bgSubtle`；活动传输数用橙色角标（高 14，字号 10）；底部依次为连接状态点（8px 圆点：success/warning/danger）与「设置」。
 - **列表栏**（280px，`bgSidebar`）：顶部搜索/标题区，其下列表；行为 `HoverRow`，选中 `bgSelected`，悬停 `bgSubtle`，圆角 6；行内：头像（`DeviceGlyph` 圆角 10，右下角在线点 11px、描边为 `bgSidebar` 2px）+ 标题（Type.strong）+ 第二行（Type.caption，text3）+ 右侧时间/未读徽标。
 - **内容区**（`bgApp`）：`PageHeader`（高 52，左内边距 24 右 16，标题 Type.page，右侧 actions 间距 8）；下方为页面内容。
 - 栏与栏之间 1px 竖线（`border`）。窗口最小宽度需容纳 72+280+内容区 ≥ 360；窄屏（移动端，阶段 07）折叠为单栏 + 底部导航，token 与控件保持不变。
@@ -111,3 +111,9 @@
 - 修改 token 只改 `lib/theme/tokens.dart` 与本文的同一处，不在页面里局部覆盖。
 - 若要参考 cc-switch 的细节，对照其 `src/index.css`、`tailwind.config.cjs` 及组件源码（`Sidebar.tsx`、`ProviderCard.tsx`、`AppPageHeader.tsx`、`ui/button.tsx`）；不确定时优先与 cc-switch 保持一致，再按三栏做最小适配。
 - 当前尚未做逐像素对照 cc-switch 官方界面，也没有在真机 macOS 上看过；待 Xcode 就绪后补充。
+
+## 9. 品牌与平台图标
+
+品牌源文件为 `assets/brand/linkory-logo.svg`，运行 `python3 tools/gen_icons.py` 一次生成所有平台资源。登录页与图标栏统一使用 `BrandLogo`；Logo 保持 #F97316，不随深浅主题改变品牌色。
+
+macOS AppIcon 同时用于 Finder、Dock 与系统应用入口；菜单栏使用 18pt/2x 透明单色模板，由系统适配深浅色。Windows 使用多尺寸 ICO（应用、任务栏及托盘）；Linux 窗口及托盘使用彩色 PNG。iOS 使用不透明 RGB 图标，Android 提供传统及自适应图标，Web 提供 favicon 与安全区内的 maskable 图标。Linux 启动器图标仍需安装包注册 .desktop 文件（当前尚无 Linux 安装包）。
