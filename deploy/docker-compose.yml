@@ -1,0 +1,23 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: linkory
+      MYSQL_USER: linkory
+      MYSQL_PASSWORD: ${LINKORY_DB_PASSWORD:-linkory}
+      MYSQL_ROOT_PASSWORD: ${LINKORY_DB_ROOT_PASSWORD:-root}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes: [mysql-data:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      retries: 20
+  server:
+    build: ../linkory-server
+    depends_on:
+      mysql: { condition: service_healthy }
+    environment:
+      LINKORY_MYSQL_DSN: linkory:${LINKORY_DB_PASSWORD:-linkory}@tcp(mysql:3306)/linkory?parseTime=true&charset=utf8mb4&loc=UTC
+    ports: ["8080:8080"]
+volumes:
+  mysql-data:

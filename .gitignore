@@ -1,0 +1,6 @@
+.DS_Store
+*.env
+/linkory-server/bin/
+/linkory-core/target/
+/linkory-app/build/
+.dart_tool/
