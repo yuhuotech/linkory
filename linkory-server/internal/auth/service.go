@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -28,6 +29,11 @@ type Service struct {
 	AccessTTL  time.Duration
 	RefreshTTL time.Duration
 
+	// RefreshGrace: presenting a refresh token that was rotated away less than this long ago is
+	// treated as a lost response (client retry), not theft: it gets the same successor token back.
+	// Beyond it (or after two rotations) reuse revokes every session of the device.
+	RefreshGrace time.Duration
+
 	// OnRevoke is called with the devices whose sessions were just revoked (e.g. after a password
 	// change) so live connections can be dropped.
 	OnRevoke func(deviceIDs []string)
@@ -37,7 +43,7 @@ type Service struct {
 }
 
 func NewService(db *sql.DB, secret []byte, access, refresh time.Duration) *Service {
-	return &Service{DB: db, Secret: secret, AccessTTL: access, RefreshTTL: refresh, failures: map[string][]time.Time{}}
+	return &Service{DB: db, Secret: secret, AccessTTL: access, RefreshTTL: refresh, RefreshGrace: 20 * time.Second, failures: map[string][]time.Time{}}
 }
 
 type DeviceInfo struct {
@@ -194,6 +200,16 @@ func (s *Service) Refresh(ctx context.Context, refresh string) (*Tokens, error) 
 		return nil, err
 	}
 	if revoked.Valid {
+		// A token that was just rotated away and is presented again is almost always a retry after a
+		// lost response. The successor is derived from it, so we can hand the same one back.
+		if s.RefreshGrace > 0 && time.Since(revoked.Time) < s.RefreshGrace && !devRevoked.Valid {
+			next := s.nextRefresh(refresh)
+			var cur string
+			if tx.QueryRowContext(ctx, `SELECT id FROM device_sessions WHERE device_id=? AND refresh_token_hash=? AND revoked_at IS NULL`, did, sha(next)).Scan(&cur) == nil {
+				_ = tx.Commit()
+				return s.tokens(uid, did, cur, next)
+			}
+		}
 		// Possible token theft: kill every session of this device.
 		_, _ = tx.ExecContext(ctx, `UPDATE device_sessions SET revoked_at=UTC_TIMESTAMP(3) WHERE device_id=? AND revoked_at IS NULL`, did)
 		_ = tx.Commit()
@@ -202,8 +218,9 @@ func (s *Service) Refresh(ctx context.Context, refresh string) (*Tokens, error) 
 	if devRevoked.Valid || time.Now().UTC().After(exp) {
 		return nil, apiutil.ErrUnauthorized
 	}
-	newRefresh := randomToken()
-	if _, err := tx.ExecContext(ctx, `UPDATE device_sessions SET refresh_token_hash=? WHERE id=?`, sha(newRefresh), sid); err != nil {
+	newRefresh := s.nextRefresh(refresh)
+	// Sliding expiry: an account that keeps using the app stays signed in.
+	if _, err := tx.ExecContext(ctx, `UPDATE device_sessions SET refresh_token_hash=?, expires_at=? WHERE id=?`, sha(newRefresh), time.Now().UTC().Add(s.RefreshTTL), sid); err != nil {
 		return nil, err
 	}
 	// Keep the old hash recognisable as "used" by recording it in a revoked tombstone row.
@@ -269,6 +286,11 @@ func (s *Service) ChangePassword(ctx context.Context, p Principal, oldPw, newPw 
 	return nil
 }
 
+// PurgeTombstones drops rotated-away refresh rows that are too old to matter for reuse detection.
+func (s *Service) PurgeTombstones(ctx context.Context, olderThan time.Duration) {
+	_, _ = s.DB.ExecContext(ctx, `DELETE FROM device_sessions WHERE revoked_at IS NOT NULL AND revoked_at < ?`, time.Now().UTC().Add(-olderThan))
+}
+
 func (s *Service) Logout(ctx context.Context, p Principal) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE device_sessions SET revoked_at=UTC_TIMESTAMP(3) WHERE id=? AND revoked_at IS NULL`, p.SessionID)
 	return err
@@ -322,6 +344,14 @@ func randomToken() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// nextRefresh derives the successor of a refresh token (keyed with the server secret, so it cannot
+// be computed without it) which makes a retried refresh idempotent.
+func (s *Service) nextRefresh(prev string) string {
+	m := hmac.New(sha256.New, s.Secret)
+	m.Write([]byte("linkory-refresh-v1|" + prev))
+	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 
 func sha(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }

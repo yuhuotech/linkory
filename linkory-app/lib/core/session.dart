@@ -53,8 +53,9 @@ class SessionController extends Notifier<SessionState> {
   SessionState build() {
     _p = ref.read(prefsProvider);
     _sec = ref.read(secretsProvider);
-    final access = _sec.get('access'), refresh = _sec.get('refresh');
-    final loggedIn = access != null && refresh != null && _p.getString('device_id') != null;
+    final refresh = _sec.get('refresh');
+    // The refresh token is what keeps you signed in; a missing/expired access token is simply renewed.
+    final loggedIn = refresh != null && _p.getString('device_id') != null;
     return SessionState(
       status: loggedIn ? AuthStatus.loggedIn : AuthStatus.loggedOut,
       serverUrl: _p.getString('server_url') ?? defaultServer,
@@ -66,7 +67,7 @@ class SessionController extends Notifier<SessionState> {
   /// Called once after the providers are wired so the API client holds the persisted tokens.
   void restoreTokens(ApiClient api) {
     final a = _sec.get('access'), r = _sec.get('refresh');
-    if (a != null && r != null) api.tokens = Tokens(a, r);
+    if (r != null) api.tokens = Tokens(a ?? '', r);
   }
 
   Future<void> register(String server, String username, String password) async {

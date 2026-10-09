@@ -21,7 +21,7 @@ func Load() Config {
 		Addr:             env("LINKORY_ADDR", ":8080"),
 		MySQLDSN:         env("LINKORY_MYSQL_DSN", "linkory:linkory@tcp(127.0.0.1:3306)/linkory?parseTime=true&charset=utf8mb4&loc=UTC"),
 		AccessTokenTTL:   envDuration("LINKORY_ACCESS_TTL", 15*time.Minute),
-		RefreshTokenTTL:  envDuration("LINKORY_REFRESH_TTL", 30*24*time.Hour),
+		RefreshTokenTTL:  envDuration("LINKORY_REFRESH_TTL", 90*24*time.Hour),
 		OfflineMsgTTL:    envDuration("LINKORY_OFFLINE_MSG_TTL", 30*24*time.Hour),
 		JWTSecret:        env("LINKORY_JWT_SECRET", ""),
 		MaxTransferBytes: envInt64("LINKORY_MAX_TRANSFER_BYTES", 2<<30),

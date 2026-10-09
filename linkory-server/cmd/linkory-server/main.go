@@ -48,6 +48,7 @@ func main() {
 	go func() {
 		for range time.Tick(time.Hour) {
 			store.PurgeExpired(context.Background(), cfg.OfflineMsgTTL)
+			authSvc.PurgeTombstones(context.Background(), 30*24*time.Hour)
 		}
 	}()
 

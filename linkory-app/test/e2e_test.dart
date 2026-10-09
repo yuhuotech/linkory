@@ -5,8 +5,10 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:linkory_app/core/api.dart';
 import 'package:linkory_app/core/lan/lan.dart';
 import 'package:linkory_app/core/models.dart';
+import 'package:linkory_app/core/secrets.dart';
 import 'package:linkory_app/core/session.dart';
 import 'package:linkory_app/core/store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,6 +33,42 @@ Future<ProviderContainer> client(String name, Directory saveDir) async {
 
 void main() {
   bigTest();
+  test('signed-in state survives an app restart (even without a stored access token)', () async {
+    final user = 'keep${Random().nextInt(1 << 30)}';
+    final tmp = await Directory.systemTemp.createTemp('linkory_keep');
+    addTearDown(() => tmp.delete(recursive: true));
+    SharedPreferences.setMockInitialValues({'save_dir': tmp.path});
+    final prefs = await SharedPreferences.getInstance();
+    final secrets1 = Secrets.memory();
+    final c1 = ProviderContainer(overrides: [prefsProvider.overrideWithValue(prefs), secretsProvider.overrideWithValue(secrets1)]);
+    await c1.read(sessionProvider.notifier).register(url!, user, 'correct-horse-9');
+    await c1.read(sessionProvider.notifier).login(url!, user, 'correct-horse-9');
+    final devId = c1.read(sessionProvider).deviceId;
+    expect(secrets1.get('refresh'), isNotNull);
+    c1.dispose(); // "quit the app"
+
+    // "Relaunch": same prefs, credentials from storage — but pretend the access token was never saved.
+    final secrets2 = Secrets.memory({'refresh': secrets1.get('refresh')!, 'key_seed': secrets1.get('key_seed') ?? ''});
+    final c2 = ProviderContainer(overrides: [prefsProvider.overrideWithValue(prefs), secretsProvider.overrideWithValue(secrets2)]);
+    addTearDown(c2.dispose);
+    expect(c2.read(sessionProvider).status, AuthStatus.loggedIn);
+    expect(c2.read(sessionProvider).deviceId, devId);
+    c2.read(sessionProvider.notifier).restoreTokens(c2.read(apiProvider));
+    await c2.read(storeProvider.notifier).start();
+    await until(() => c2.read(storeProvider).devices.isNotEmpty, what: 'devices load after relaunch');
+    expect(c2.read(sessionProvider).status, AuthStatus.loggedIn);
+    expect(secrets2.get('access'), isNotNull, reason: 'the renewed access token is stored again');
+
+    // A refresh response lost on the wire: retrying the OLD refresh token must not sign the user out.
+    final old = secrets2.get('refresh')!;
+    final api = c2.read(apiProvider);
+    api.tokens = Tokens('', old);
+    await api.request('GET', '/devices'); // 401 -> refresh (rotates) -> retry
+    api.tokens = Tokens('', old); // the client "never received" the rotated token and retries with the old one
+    await api.request('GET', '/devices');
+    expect(c2.read(sessionProvider).status, AuthStatus.loggedIn);
+  }, skip: url == null ? 'set LINKORY_E2E_URL' : false, timeout: const Timeout(Duration(seconds: 60)));
+
   test('files from your own devices are received automatically by default', () async {
     final user = 'auto${Random().nextInt(1 << 30)}';
     final tmp = await Directory.systemTemp.createTemp('linkory_auto');

@@ -129,8 +129,16 @@ func TestAccountsAndDevices(t *testing.T) {
 	if code != 200 || rot["refresh_token"] == r1 {
 		t.Fatalf("refresh: %d %v", code, rot)
 	}
+	// A retry of the same request (lost response) is answered with the same successor, not punished.
+	if code, again := call(h, "POST", "/api/v1/auth/refresh", "", map[string]any{"refresh_token": r1}); code != 200 || again["refresh_token"] != rot["refresh_token"] {
+		t.Fatalf("idempotent refresh retry: %d %v", code, again)
+	}
+	// Rotate once more; r1 is now two steps behind: that is reuse, and kills the device's sessions.
+	if code, _ := call(h, "POST", "/api/v1/auth/refresh", "", map[string]any{"refresh_token": rot["refresh_token"]}); code != 200 {
+		t.Fatal("second rotation")
+	}
 	if code, _ := call(h, "POST", "/api/v1/auth/refresh", "", map[string]any{"refresh_token": r1}); code != 401 {
-		t.Fatal("reused refresh token accepted")
+		t.Fatal("stale refresh token accepted")
 	}
 	if code, _ := call(h, "GET", "/api/v1/devices", rot["access_token"].(string), nil); code != 401 {
 		t.Fatal("session should be revoked after refresh-token reuse")

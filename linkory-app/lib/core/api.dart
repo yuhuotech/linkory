@@ -22,7 +22,7 @@ class ApiClient {
 
   String baseUrl;
   Tokens? tokens;
-  final void Function(Tokens)? onTokens;
+  final Future<void> Function(Tokens)? onTokens;
   final void Function()? onAuthLost;
   final http.Client _http;
   Future<bool>? _refreshing;
@@ -69,7 +69,7 @@ class ApiClient {
     try {
       final j = await request('POST', '/auth/refresh', body: {'refresh_token': t.refresh}, auth: false, retry: false);
       tokens = Tokens(j['access_token'], j['refresh_token']);
-      onTokens?.call(tokens!);
+      await onTokens?.call(tokens!); // persist before anyone uses the new token: a lost rotation means re-login
       return true;
     } on ApiException catch (e) {
       if (e.status == 401) {
