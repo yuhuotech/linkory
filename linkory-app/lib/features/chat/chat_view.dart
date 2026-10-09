@@ -11,6 +11,7 @@ import '../../shared/format.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
 import '../transfers/transfer_card.dart';
+import 'message_bubble.dart';
 
 /// Right column: conversation with one device.
 class ChatView extends ConsumerStatefulWidget {
@@ -27,6 +28,17 @@ class _ChatViewState extends ConsumerState<ChatView> {
   final _query = TextEditingController();
   bool _searching = false;
   bool _dragging = false;
+  bool _showLatest = false; // scrolled away from the newest messages
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(() {
+      if (!_scroll.hasClients) return;
+      final away = _scroll.offset > 240; // the list is reversed: offset 0 is the newest message
+      if (away != _showLatest) setState(() => _showLatest = away);
+    });
+  }
 
   @override
   void dispose() {
@@ -56,7 +68,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
   }
 
   void _toBottom() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent + 200, duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
+        if (_scroll.hasClients) _scroll.animateTo(0, duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
       });
 
   Future<void> _sendClipboard() async {
@@ -88,7 +100,10 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final st = ref.watch(storeProvider);
     final peer = st.device(widget.peerId);
     final online = st.isOnline(widget.peerId);
-    ref.listen(storeProvider.select((s) => (s.messages[widget.peerId]?.length ?? 0) + s.transfers.length), (_, _) => _toBottom());
+    ref.listen(storeProvider.select((s) => (s.messages[widget.peerId]?.length ?? 0) + s.transfers.length), (_, _) {
+      // Follow new messages only when already reading the latest; don't yank someone reading history.
+      if (!_showLatest) _toBottom();
+    });
 
     // Timeline = messages + this pair's file tasks, ordered by time.
     final q = _query.text.trim().toLowerCase();
@@ -122,36 +137,68 @@ class _ChatViewState extends ConsumerState<ChatView> {
         ),
       Expanded(
         child: items.isEmpty
-            ? Center(
-                child: Text(q.isNotEmpty ? '没有匹配的消息' : '向「${peer?.name ?? '设备'}」发送第一条消息或文件，也可以把文件拖到这里',
-                    style: Type.body.copyWith(color: c.text3)))
-            : ListView.builder(
-                controller: _scroll,
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-                itemCount: items.length,
-                itemBuilder: (_, i) {
-                  final it = items[i];
-                  final showTime = i == 0 || it.$1.difference(items[i - 1].$1).inMinutes >= 5;
-                  return Column(children: [
-                    if (showTime)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text(fmtSeparator(it.$1), style: Type.caption.copyWith(color: c.text3)),
+            ? (q.isNotEmpty
+                ? Center(child: Text('没有匹配的消息', style: Type.body.copyWith(color: c.text3)))
+                : _EmptyConversation(peer: peer, online: online, onFile: _pickFiles, onClipboard: _sendClipboard))
+            : LayoutBuilder(builder: (context, box) {
+                // Bubbles take up to 70% of the pane (never wider than 640) so long lines stay readable.
+                final maxBubble = (box.maxWidth * .7).clamp(280.0, 640.0);
+                String key(Object o) => o is ChatMessage ? (o.mine ? 'me' : 'peer') : ((o as Transfer).sender == widget.peerId ? 'peer' : 'me');
+                bool gap(DateTime a, DateTime b) => b.difference(a).inMinutes >= 5;
+                return Stack(children: [
+                  ListView.builder(
+                    controller: _scroll,
+                    reverse: true, // anchored to the newest message, like every chat app
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                    itemCount: items.length,
+                    itemBuilder: (_, ri) {
+                      final i = items.length - 1 - ri;
+                      final it = items[i];
+                      final showTime = i == 0 || gap(items[i - 1].$1, it.$1);
+                      final first = showTime || key(items[i - 1].$2) != key(it.$2);
+                      final last = i == items.length - 1 || gap(it.$1, items[i + 1].$1) || key(items[i + 1].$2) != key(it.$2);
+                      final isPeer = key(it.$2) == 'peer';
+                      return Column(children: [
+                        if (showTime)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            child: Row(children: [
+                              Expanded(child: Divider(color: c.border, height: 1)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: Text(fmtDaySeparator(it.$1), style: Type.caption.copyWith(color: c.text3)),
+                              ),
+                              Expanded(child: Divider(color: c.border, height: 1)),
+                            ]),
+                          ),
+                        if (it.$2 is ChatMessage)
+                          MessageBubble(msg: it.$2 as ChatMessage, first: first, last: last, peer: peer, maxWidth: maxBubble)
+                        else
+                          Padding(
+                            padding: EdgeInsets.only(top: first ? 10 : 2),
+                            child: Row(
+                              mainAxisAlignment: isPeer ? MainAxisAlignment.start : MainAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (isPeer) PeerAvatar(peer: peer, show: first),
+                                Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 340), child: TransferCard(task: it.$2 as Transfer))),
+                              ],
+                            ),
+                          ),
+                      ]);
+                    },
+                  ),
+                  if (_showLatest)
+                    Positioned(
+                      right: 20,
+                      bottom: 8,
+                      child: Container(
+                        decoration: BoxDecoration(color: c.bgCard, shape: BoxShape.circle, border: Border.all(color: c.border), boxShadow: c.shadowMd),
+                        child: LIconButton(icon: LucideIcons.arrowDown, tooltip: '回到最新', size: 32, iconSize: 16, onPressed: _toBottom),
                       ),
-                    if (it.$2 is ChatMessage)
-                      MessageBubble(msg: it.$2 as ChatMessage)
-                    else
-                      Align(
-                        // Like bubbles: files I send on the right, files I receive on the left.
-                        alignment: (it.$2 as Transfer).sender == widget.peerId ? Alignment.centerLeft : Alignment.centerRight,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: TransferCard(task: it.$2 as Transfer)),
-                        ),
-                      ),
-                  ]);
-                },
-              ),
+                    ),
+                ]);
+              }),
       ),
       _Composer(
         controller: _input,
@@ -190,91 +237,6 @@ class _ChatViewState extends ConsumerState<ChatView> {
             ),
           ),
       ]),
-    );
-  }
-}
-
-class MessageBubble extends ConsumerStatefulWidget {
-  const MessageBubble({super.key, required this.msg});
-  final ChatMessage msg;
-  @override
-  ConsumerState<MessageBubble> createState() => _MessageBubbleState();
-}
-
-class _MessageBubbleState extends ConsumerState<MessageBubble> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final msg = widget.msg;
-    final c = context.c;
-    final mine = msg.mine;
-    final bubble = Container(
-      constraints: const BoxConstraints(maxWidth: 520),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: mine ? c.actionSoft : c.bgCard,
-        borderRadius: BorderRadius.circular(Radii.panel),
-        border: Border.all(color: mine ? c.action.withValues(alpha: .35) : c.border),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        if (msg.type == 'clipboard')
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(LucideIcons.clipboard, size: 12, color: c.text3),
-              const SizedBox(width: 4),
-              Text('剪贴板', style: Type.badge.copyWith(color: c.text3)),
-            ]),
-          ),
-        SelectableText(msg.content, style: Type.body.copyWith(color: c.text1, fontSize: 14, height: 1.5)),
-      ]),
-    );
-    final status = switch (msg.status) {
-      MsgStatus.sending => ('发送中', c.text3),
-      MsgStatus.serverReceived => ('已发送', c.text3),
-      MsgStatus.delivered => ('已送达', c.successText),
-      MsgStatus.failed => ('发送失败', c.dangerText),
-    };
-    // MSG-007 copy / MSG-009 delete the local record; shown on hover to keep the stream calm.
-    final actions = Opacity(
-      opacity: _hover ? 1 : 0,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          LIconButton(icon: LucideIcons.copy, tooltip: '复制', size: 24, iconSize: 14, onPressed: () => copyText(context, msg.content)),
-          LIconButton(
-              icon: LucideIcons.trash2,
-              tooltip: '删除本地记录',
-              size: 24,
-              iconSize: 14,
-              onPressed: () => ref.read(storeProvider.notifier).deleteMessage(msg)),
-        ]),
-      ),
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: Row(
-          mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (mine) ...[
-              actions,
-              if (msg.status == MsgStatus.failed)
-                LIconButton(icon: LucideIcons.rotateCw, tooltip: '重试', onPressed: () => ref.read(storeProvider.notifier).retry(msg)),
-              Padding(
-                padding: const EdgeInsets.only(right: 8, bottom: 2),
-                child: Text(status.$1, style: Type.badge.copyWith(color: status.$2)),
-              ),
-            ],
-            Flexible(child: bubble),
-            if (!mine) actions,
-          ],
-        ),
-      ),
     );
   }
 }
@@ -350,6 +312,46 @@ class _Composer extends StatelessWidget {
               ),
             ]),
           ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// A conversation with no messages yet: who this device is, and the two things you can do here.
+class _EmptyConversation extends StatelessWidget {
+  const _EmptyConversation({required this.peer, required this.online, required this.onFile, required this.onClipboard});
+  final Device? peer;
+  final bool online;
+  final VoidCallback onFile, onClipboard;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final p = peer;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (p != null) DeviceGlyph(type: p.type, size: 56, online: online),
+          const SizedBox(height: 14),
+          Text(p?.name ?? '设备', style: Type.section.copyWith(color: c.text1)),
+          const SizedBox(height: 4),
+          Text(
+            p == null ? '' : '${deviceTypeLabel(p.type)}${p.osVersion.isEmpty ? '' : ' · ${p.osVersion}'}',
+            style: Type.caption.copyWith(color: c.text3),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 10),
+          LBadge(online ? '在线' : '离线', bg: online ? c.successSoft : c.bgSubtle, fg: online ? c.successText : c.text2),
+          const SizedBox(height: 18),
+          Text('还没有消息。发送文字，或者把文件拖到这里。', style: Type.body.copyWith(color: c.text3)),
+          const SizedBox(height: 14),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            LButton(label: '发送文件', icon: LucideIcons.folderOpen, onPressed: onFile),
+            const SizedBox(width: 8),
+            LButton(label: '发送剪贴板', icon: LucideIcons.clipboardPaste, onPressed: onClipboard),
+          ]),
         ]),
       ),
     );

@@ -45,3 +45,18 @@ String fmtDuration(Duration d) {
   if (d.inHours > 0) return '${d.inHours}:${two(d.inMinutes % 60)}:${two(d.inSeconds % 60)}';
   return '${two(d.inMinutes)}:${two(d.inSeconds % 60)}';
 }
+
+/// Day divider inside a conversation: today → "10:18", yesterday → "昨天 10:18",
+/// this week → "星期三 10:18", older → "3月14日 10:18" (previous years include the year).
+String fmtDaySeparator(DateTime t, [DateTime? now]) {
+  now ??= DateTime.now();
+  final d0 = DateTime(now.year, now.month, now.day);
+  final d1 = DateTime(t.year, t.month, t.day);
+  final diff = d0.difference(d1).inDays;
+  final clock = fmtClock(t);
+  if (diff <= 0) return clock;
+  if (diff == 1) return '昨天 $clock';
+  if (diff < 7) return '星期${'一二三四五六日'[t.weekday - 1]} $clock';
+  final date = t.year == now.year ? '${t.month}月${t.day}日' : '${t.year}年${t.month}月${t.day}日';
+  return '$date $clock';
+}

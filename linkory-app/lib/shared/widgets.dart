@@ -219,16 +219,16 @@ class LBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
+    // Hug the text: inside a Wrap a centred Container would stretch to the full row width.
     return Container(
       height: 18,
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: outline ? null : (bg ?? c.bgSubtle),
         borderRadius: BorderRadius.circular(9),
         border: outline ? Border.all(color: c.borderStrong) : null,
       ),
-      child: Text(text, style: Type.badge.copyWith(color: fg ?? c.text2, height: 1)),
+      child: Center(widthFactor: 1, child: Text(text, style: Type.badge.copyWith(color: fg ?? c.text2, height: 1))),
     );
   }
 }

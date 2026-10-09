@@ -71,7 +71,9 @@ AppState fixtureState({Section section = Section.chats, String? peer = 'win'}) {
     messages: {
       'win': [
         ChatMessage(clientId: '1', peerId: 'win', mine: false, type: 'text', content: '文件我放在共享盘了，你看一下', createdAt: now.subtract(const Duration(minutes: 12))),
+        ChatMessage(clientId: '1b', peerId: 'win', mine: false, type: 'text', content: '另外会议链接稍后也发你', createdAt: now.subtract(const Duration(minutes: 11, seconds: 40))),
         ChatMessage(clientId: '2', peerId: 'win', mine: true, type: 'text', content: '好的，我这边收到了 👍', createdAt: now.subtract(const Duration(minutes: 11)), status: MsgStatus.delivered),
+        ChatMessage(clientId: '3b', peerId: 'win', mine: false, type: 'clipboard', content: 'git clone git@github.com:yuhuotech/linkory.git\ncd linkory && make server-run', createdAt: now.subtract(const Duration(minutes: 4))),
         ChatMessage(clientId: '3', peerId: 'win', mine: true, type: 'clipboard', content: 'https://linkory.example.com/invite/8f3a2c', createdAt: now.subtract(const Duration(minutes: 3)), status: MsgStatus.serverReceived),
         ChatMessage(clientId: '4', peerId: 'win', mine: true, type: 'text', content: '再发一条试试重试', createdAt: now.subtract(const Duration(minutes: 1)), status: MsgStatus.failed),
       ],

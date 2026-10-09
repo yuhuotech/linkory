@@ -95,7 +95,7 @@ void main() {
   });
 
   testWidgets('file cards: open / show-in-folder icons for sent files and received files', (t) async {
-    await pumpApp(t, fixtureState());
+    await pumpApp(t, fixtureState(), size: const Size(1200, 1300)); // tall enough to build the whole conversation
     // t1 (sent, in progress), t3 is in another chat; in this chat: t1 sent, t4 received+complete, t2 waiting (no file yet).
     expect(find.byTooltip('打开文件'), findsNWidgets(2));
     expect(find.byTooltip('在文件夹中显示'), findsNWidgets(2));
