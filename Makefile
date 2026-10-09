@@ -26,4 +26,4 @@ e2e:
 .PHONY: app-run
 # 按当前系统自动选择桌面目标；想跑别的设备：make app-run DEVICE=emulator-5554
 app-run:
-	cd linkory-app && flutter run -d $(or $(DEVICE),$(shell case "$$(uname -s)" in Darwin) echo macos;; Linux) echo linux;; *) echo windows;; esac))
+	tools/app_run.sh $(DEVICE)
