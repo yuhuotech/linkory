@@ -25,6 +25,8 @@ type Device struct {
 type Handler struct {
 	DB   *sql.DB
 	Auth *auth.Service
+	// OnRemove runs after a device is revoked (e.g. to drop its live connection).
+	OnRemove func(deviceID string)
 }
 
 func (h *Handler) Routes(mux *http.ServeMux) {
@@ -99,5 +101,8 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = h.DB.ExecContext(r.Context(), `UPDATE device_sessions SET revoked_at=UTC_TIMESTAMP(3) WHERE device_id=? AND revoked_at IS NULL`, id)
+	if h.OnRemove != nil {
+		h.OnRemove(id)
+	}
 	w.WriteHeader(204)
 }

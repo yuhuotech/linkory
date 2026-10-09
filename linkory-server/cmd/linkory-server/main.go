@@ -15,6 +15,7 @@ import (
 	"github.com/linkory/linkory-server/internal/config"
 	"github.com/linkory/linkory-server/internal/database"
 	"github.com/linkory/linkory-server/internal/httpapi"
+	"github.com/linkory/linkory-server/internal/messaging"
 	"github.com/linkory/linkory-server/migrations"
 )
 
@@ -41,7 +42,15 @@ func main() {
 	}
 	authSvc := auth.NewService(db, secret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: httpapi.NewRouter(db, authSvc), ReadHeaderTimeout: 10 * time.Second}
+	store := &messaging.Store{DB: db}
+	hub := messaging.NewHub(db, store)
+	go func() {
+		for range time.Tick(time.Hour) {
+			store.PurgeExpired(context.Background(), cfg.OfflineMsgTTL)
+		}
+	}()
+
+	srv := &http.Server{Addr: cfg.Addr, Handler: httpapi.NewRouter(db, authSvc, hub, cfg.OfflineMsgTTL), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Info("listening", "addr", cfg.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

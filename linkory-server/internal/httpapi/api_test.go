@@ -12,6 +12,7 @@ import (
 
 	"github.com/linkory/linkory-server/internal/auth"
 	"github.com/linkory/linkory-server/internal/database"
+	"github.com/linkory/linkory-server/internal/messaging"
 	"github.com/linkory/linkory-server/migrations"
 )
 
@@ -25,14 +26,15 @@ func setup(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tb := range []string{"device_sessions", "devices", "users", "schema_migrations"} {
+	for _, tb := range []string{"messages", "conversations", "device_sessions", "devices", "users", "schema_migrations"} {
 		db.Exec("DROP TABLE IF EXISTS " + tb)
 	}
 	if err := database.Migrate(db, migrations.FS); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return NewRouter(db, auth.NewService(db, []byte("test-secret-test-secret-test-secret"), time.Minute, time.Hour))
+	hub := messaging.NewHub(db, &messaging.Store{DB: db})
+	return NewRouter(db, auth.NewService(db, []byte("test-secret-test-secret-test-secret"), time.Minute, time.Hour), hub, 30*24*time.Hour)
 }
 
 func call(h http.Handler, method, path, token string, body any) (int, map[string]any) {

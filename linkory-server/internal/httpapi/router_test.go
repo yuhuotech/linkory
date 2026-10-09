@@ -8,7 +8,7 @@ import (
 
 func TestHealthz(t *testing.T) {
 	rec := httptest.NewRecorder()
-	NewRouter(nil, nil).ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
+	NewRouter(nil, nil, nil, 0).ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("got %d", rec.Code)
 	}
@@ -16,7 +16,7 @@ func TestHealthz(t *testing.T) {
 
 func TestReadyzWithoutDB(t *testing.T) {
 	rec := httptest.NewRecorder()
-	NewRouter(nil, nil).ServeHTTP(rec, httptest.NewRequest("GET", "/readyz", nil))
+	NewRouter(nil, nil, nil, 0).ServeHTTP(rec, httptest.NewRequest("GET", "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("got %d", rec.Code)
 	}

@@ -6,15 +6,28 @@ import (
 	"io/fs"
 	"sort"
 	"strings"
+	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 )
 
 func Open(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("mysql", dsn)
+	cfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
 	}
+	// All timestamps are stored in UTC, regardless of the MySQL server's time zone.
+	cfg.Loc = time.UTC
+	cfg.ParseTime = true
+	if cfg.Params == nil {
+		cfg.Params = map[string]string{}
+	}
+	cfg.Params["time_zone"] = "'+00:00'"
+	connector, err := mysql.NewConnector(cfg)
+	if err != nil {
+		return nil, err
+	}
+	db := sql.OpenDB(connector)
 	return db, db.Ping()
 }
 
