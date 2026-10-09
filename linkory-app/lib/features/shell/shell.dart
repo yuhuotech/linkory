@@ -8,8 +8,10 @@ import '../../core/store.dart';
 import '../../shared/format.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
+import '../../core/session.dart';
 import '../chat/chat_view.dart';
 import '../devices/devices_view.dart';
+import '../guest/guest.dart';
 import '../settings/settings_view.dart';
 import '../transfers/transfers_view.dart';
 
@@ -147,7 +149,9 @@ class _Content extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.c;
+    final guest = ref.watch(isGuestProvider);
     return switch (st.section) {
+      Section.chats when guest => const GuestWelcome(),
       Section.chats => st.selectedPeer == null || st.device(st.selectedPeer!) == null
           ? Column(children: [
               const PageHeader(title: '连信'),
@@ -162,7 +166,7 @@ class _Content extends ConsumerWidget {
               ),
             ])
           : ChatView(key: ValueKey(st.selectedPeer), peerId: st.selectedPeer!),
-      Section.devices => DevicesView(deviceId: ref.watch(_devicePick) ?? st.self?.id),
+      Section.devices => DevicesView(deviceId: ref.watch(_devicePick) ?? st.self?.id ?? (guest ? 'local' : null)),
       Section.transfers => const TransfersView(),
       Section.settings => const SettingsView(),
     };
@@ -207,7 +211,7 @@ class _Rail extends ConsumerWidget {
         const SizedBox(height: 4),
         nav(Section.transfers, LucideIcons.arrowLeftRight, '传输中心', badge: activeTransfers),
         const Spacer(),
-        _LinkDot(state: st.link),
+        _LinkDot(state: st.link, guest: ref.watch(isGuestProvider)),
         const SizedBox(height: 8),
         nav(Section.settings, LucideIcons.settings, '设置'),
         const SizedBox(height: 14),
@@ -272,12 +276,15 @@ class _RailButtonState extends State<_RailButton> {
 }
 
 class _LinkDot extends StatelessWidget {
-  const _LinkDot({required this.state});
+  const _LinkDot({required this.state, this.guest = false});
   final LinkState state;
+  final bool guest;
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    final (color, tip) = switch (state) {
+    final (color, tip) = guest
+        ? (c.controlOff, '未登录')
+        : switch (state) {
       LinkState.connected => (c.success, '已连接服务器'),
       LinkState.connecting || LinkState.reconnecting => (c.warning, '正在连接服务器…'),
       LinkState.closed => (c.controlOff, '未连接'),
@@ -296,6 +303,8 @@ class _ListColumn extends ConsumerWidget {
     final c = context.c;
     final st = ref.watch(storeProvider);
     final store = ref.read(storeProvider.notifier);
+    final guest = ref.watch(isGuestProvider);
+    final local = guest ? ref.watch(guestDeviceProvider).value : null;
     return Container(
       color: c.bgSidebar,
       child: Column(children: [
@@ -313,7 +322,7 @@ class _ListColumn extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              LIconButton(icon: LucideIcons.refreshCw, tooltip: '刷新设备', size: 32, onPressed: store.refreshAll),
+              LIconButton(icon: LucideIcons.refreshCw, tooltip: guest ? '登录后可刷新' : '刷新设备', size: 32, onPressed: guest ? null : store.refreshAll),
             ]),
           )
         else
@@ -325,7 +334,10 @@ class _ListColumn extends ConsumerWidget {
             ),
           ),
         Expanded(child: switch (st.section) {
+          Section.chats when guest => const GuestEmpty(
+              icon: LucideIcons.messagesSquare, title: '还没有会话', message: '登录后，你的其他设备会出现在这里，\n可直接发送消息和文件。', compact: true),
           Section.chats => _PeerList(devices: _filter(st.peers, st.search), forChat: true),
+          Section.devices when guest => _PeerList(devices: [?local], forChat: false),
           Section.devices => _PeerList(devices: _filter(st.devices, st.search), forChat: false),
           Section.transfers => const _FilterList(),
           Section.settings => const _SettingsList(),
@@ -372,12 +384,13 @@ class _PeerList extends ConsumerWidget {
       itemCount: sorted.length,
       itemBuilder: (_, i) {
         final d = sorted[i];
-        final online = d.current || st.isOnline(d.id);
+        final guest = ref.watch(isGuestProvider);
+        final online = (d.current && !guest) || st.isOnline(d.id);
         final last = st.messages[d.id]?.lastOrNull;
         final selected = forChat ? st.selectedPeer == d.id : picked == d.id;
         final sub = forChat
             ? (last == null ? (online ? '在线' : '离线') : '${last.mine ? '' : ''}${last.type == 'clipboard' ? '[剪贴板] ' : ''}${last.content.replaceAll('\n', ' ')}')
-            : '${deviceTypeLabel(d.type)} · ${d.current ? '本机' : online ? '在线' : '离线'}';
+            : '${deviceTypeLabel(d.type)} · ${d.current ? (guest ? '本机 · 未登录' : '本机') : online ? '在线' : '离线'}';
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 1),
           child: HoverRow(

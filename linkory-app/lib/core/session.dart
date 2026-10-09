@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'models.dart';
 import 'secrets.dart';
 
 const defaultServer = 'http://127.0.0.1:8090';
@@ -81,9 +82,9 @@ class SessionController extends Notifier<SessionState> {
         // Reuse the device identity only for the same server+account; otherwise register anew.
         if (_p.getString('device_server') == api.baseUrl && _p.getString('username') == username)
           'device_id': _p.getString('device_id'),
-        'name': await _deviceName(),
-        'type': _deviceType(),
-        'os_version': _osVersion(),
+        'name': await deviceDisplayName(),
+        'type': deviceTypeName(),
+        'os_version': osVersionString(),
         'app_version': '0.1.0',
         'public_key': pub,
       },
@@ -143,45 +144,46 @@ class SessionController extends Notifier<SessionState> {
     final pub = await (pair as SimpleKeyPair).extractPublicKey();
     return base64Encode(pub.bytes);
   }
+}
 
-  String _deviceType() {
-    if (kIsWeb) return 'linux';
-    return switch (defaultTargetPlatform) {
-      TargetPlatform.macOS => 'macos',
-      TargetPlatform.windows => 'windows',
-      TargetPlatform.android => 'android',
-      TargetPlatform.iOS => 'ios',
-      _ => 'linux',
-    };
-  }
+/// Platform identity helpers (also used to describe this device before sign-in).
+String deviceTypeName() {
+  if (kIsWeb) return 'linux';
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.macOS => 'macos',
+    TargetPlatform.windows => 'windows',
+    TargetPlatform.android => 'android',
+    TargetPlatform.iOS => 'ios',
+    _ => 'linux',
+  };
+}
 
-  Future<String> _deviceName() async {
-    if (kIsWeb) return 'Web 浏览器';
-    try {
-      // Phones report "localhost" as hostname; use the model name there.
-      if (Platform.isAndroid) {
-        final a = await DeviceInfoPlugin().androidInfo;
-        final n = '${a.manufacturer} ${a.model}'.trim();
-        if (n.isNotEmpty) return n.length > 60 ? n.substring(0, 60) : n;
-      } else if (Platform.isIOS) {
-        final i = await DeviceInfoPlugin().iosInfo;
-        if (i.name.isNotEmpty) return i.name.length > 60 ? i.name.substring(0, 60) : i.name;
-      }
-      final h = Platform.localHostname;
-      return h.length > 60 ? h.substring(0, 60) : h;
-    } catch (_) {
-      return _deviceType();
+Future<String> deviceDisplayName() async {
+  if (kIsWeb) return 'Web 浏览器';
+  try {
+    // Phones report "localhost" as hostname; use the model name there.
+    if (Platform.isAndroid) {
+      final a = await DeviceInfoPlugin().androidInfo;
+      final n = '${a.manufacturer} ${a.model}'.trim();
+      if (n.isNotEmpty) return n.length > 60 ? n.substring(0, 60) : n;
+    } else if (Platform.isIOS) {
+      final i = await DeviceInfoPlugin().iosInfo;
+      if (i.name.isNotEmpty) return i.name.length > 60 ? i.name.substring(0, 60) : i.name;
     }
+    final h = Platform.localHostname;
+    return h.length > 60 ? h.substring(0, 60) : h;
+  } catch (_) {
+    return deviceTypeName();
   }
+}
 
-  String _osVersion() {
-    if (kIsWeb) return 'web';
-    try {
-      final v = Platform.operatingSystemVersion;
-      return v.length > 60 ? '${v.substring(0, 60)}…' : v;
-    } catch (_) {
-      return '';
-    }
+String osVersionString() {
+  if (kIsWeb) return 'web';
+  try {
+    final v = Platform.operatingSystemVersion;
+    return v.length > 60 ? '${v.substring(0, 60)}…' : v;
+  } catch (_) {
+    return '';
   }
 }
 
@@ -200,3 +202,17 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
 }
 
 final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
+
+/// True until the user signs in: the app is fully browsable but not connected to anything.
+final isGuestProvider = Provider<bool>((ref) => ref.watch(sessionProvider.select((s) => s.status)) != AuthStatus.loggedIn);
+
+/// This device as it would be registered, for showing in the device pages before sign-in.
+final guestDeviceProvider = FutureProvider<Device>((ref) async => Device(
+      id: 'local',
+      name: await deviceDisplayName(),
+      type: deviceTypeName(),
+      osVersion: osVersionString(),
+      appVersion: '0.1.0',
+      status: 'offline',
+      current: true,
+    ));

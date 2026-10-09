@@ -272,7 +272,7 @@ class AppStore extends Notifier<AppState> {
     _lanTimer?.cancel();
     unawaited(_lan?.close());
     _lan = null;
-    state = AppState(saveDir: state.saveDir, transferMode: state.transferMode);
+    state = AppState(saveDir: state.saveDir, transferMode: state.transferMode, section: state.section); // stay on the current page after sign-out
   }
 
   Future<void> refreshAll() async {

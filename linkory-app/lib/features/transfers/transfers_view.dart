@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/session.dart';
 import '../../core/store.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
+import '../guest/guest.dart';
 import 'transfer_card.dart';
 
 enum TransferFilter { all, active, done, failed }
@@ -39,6 +41,7 @@ class TransfersView extends ConsumerWidget {
     final c = context.c;
     final f = ref.watch(transferFilterProvider);
     final all = ref.watch(storeProvider).transfers;
+    final guest = ref.watch(isGuestProvider);
     final list = all.where((t) => switch (f) {
           TransferFilter.all => true,
           TransferFilter.active => t.active,
@@ -54,6 +57,7 @@ class TransfersView extends ConsumerWidget {
             onPressed: all.any((t) => !t.active) ? () => ref.read(storeProvider.notifier).clearFinishedTransfers() : null),
         LIconButton(icon: LucideIcons.refreshCw, tooltip: '刷新', onPressed: () => ref.read(storeProvider.notifier).loadTransfers()),
       ]),
+      if (guest) const GuestBanner(),
       if (isNarrow(context))
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -71,7 +75,9 @@ class TransfersView extends ConsumerWidget {
         ),
       Expanded(
         child: list.isEmpty
-            ? Center(child: Text('暂无传输任务', style: Type.body.copyWith(color: c.text3)))
+            ? (guest
+                ? const GuestEmpty(icon: LucideIcons.arrowLeftRight, title: '这里会显示所有传输任务', message: '登录后可向其他设备发送文件：进度、速度、重试都在这里；\n同一局域网内会自动直连。')
+                : Center(child: Text('暂无传输任务', style: Type.body.copyWith(color: c.text3))))
             : ListView.separated(
                 padding: const EdgeInsets.all(24),
                 itemCount: list.length,

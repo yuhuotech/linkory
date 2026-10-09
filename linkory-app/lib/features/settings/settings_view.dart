@@ -10,6 +10,7 @@ import '../../core/session.dart';
 import '../../core/store.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
+import '../auth/login_page.dart';
 
 enum SettingsTab { account, general, transfer, about }
 
@@ -49,6 +50,7 @@ class SettingsView extends ConsumerWidget {
     final tab = ref.watch(settingsTabProvider);
     final sess = ref.watch(sessionProvider);
     final st = ref.watch(storeProvider);
+    final guest = ref.watch(isGuestProvider);
 
     Widget item(String k, Widget v) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -60,6 +62,20 @@ class SettingsView extends ConsumerWidget {
     Text t(String s) => Text(s, style: Type.body.copyWith(color: c.text1));
 
     final body = switch (tab) {
+      SettingsTab.account when guest => [
+          item('状态', Row(mainAxisSize: MainAxisSize.min, children: [const LBadge('未登录'), const SizedBox(width: 8), t('登录后才能与其他设备互联')])),
+          item('服务器', t(sess.serverUrl)),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              LButton(label: '登录', variant: BtnVariant.solid, icon: LucideIcons.logIn, onPressed: () => showLogin(context)),
+              const SizedBox(width: 8),
+              LButton(label: '注册账号', onPressed: () => showLogin(context, register: true)),
+            ]),
+          ),
+          const SizedBox(height: 8),
+        ],
       SettingsTab.account => [
           item('用户名', t(sess.username)),
           item('服务器', t(sess.serverUrl)),

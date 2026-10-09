@@ -66,6 +66,7 @@ linkory/
 - ✅ 阶段 04：传输任务状态机 + 流式中转 + SHA-256 校验；1 GB 文件经 Docker 部署的服务端传输通过（约 15 秒，服务端内存约 140 MB）。
 - ✅ 客户端联调：双客户端（独立会话）对真实服务端的端到端测试（`linkory-app/test/e2e_test.dart`）与真机集成测试（`integration_test/app_test.dart`，真实窗口渲染截图）通过。
 - ✅ 阶段 05 桌面体验：托盘与关闭到托盘、系统通知、拖拽/多文件发送、隐藏标题栏、开机启动（macOS/Windows/Linux 原生实现）、本地日志、主题设置、凭据存系统钥匙串（不可用时回退）、macOS dmg 打包脚本（`make app-macos-dmg`）。
+- ✅ 未登录浏览模式：启动不再强制登录，完整界面可浏览，登录为按需对话框（UI_SPEC §11）。
 - ✅ 阶段 06 局域网直连（V1.1）：每任务密钥协商、`LNK1` 加密直连协议、断点续传、失败回退中转、传输方式设置（自动/仅局域网/仅中转）；Rust 参考实现 `linkory-core` 与 Dart 实现双向互操作测试通过。
 - 🚧 阶段 07：窄屏单栏布局 + 底部导航已完成；iOS 可构建（`flutter build ios --no-codesign`）；Android 已装 SDK，debug/release APK 可构建，并在 Android 15 模拟器上跑通真实应用集成测试（登录、收消息、收文件邀请，截图核对）；Windows/Linux 未在对应系统构建。移动端系统分享入口、移动端通知尚未实现。
 

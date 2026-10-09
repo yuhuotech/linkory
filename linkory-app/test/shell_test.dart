@@ -49,10 +49,48 @@ void main() {
     }
   });
 
-  testWidgets('login page', (t) async {
-    await pumpApp(t, fixtureState(), auth: AuthStatus.loggedOut);
-    expect(find.text('登录'), findsOneWidget);
-    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/login_light.png'));
+  testWidgets('signed out: full UI is browsable, sign-in is opt-in', (t) async {
+    await pumpApp(t, const AppState(), auth: AuthStatus.loggedOut);
+    // Default page is a welcome screen with entry points, not a forced login form.
+    expect(find.text('欢迎使用连信'), findsOneWidget);
+    expect(find.text('服务器地址'), findsNothing);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/guest_welcome_light.png'));
+
+    // Other sections are reachable and explain what signing in unlocks.
+    await t.tap(find.byTooltip('设备管理'));
+    await t.pumpAndSettle();
+    expect(find.text('当前未登录：登录后才能与你的其他设备互联、收发消息和文件。'), findsOneWidget);
+    expect(find.text('我的 MacBook Pro'), findsWidgets);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/guest_devices_light.png'));
+    await t.tap(find.byTooltip('传输中心'));
+    await t.pumpAndSettle();
+    expect(find.text('这里会显示所有传输任务'), findsOneWidget);
+    await t.tap(find.byTooltip('设置'));
+    await t.pumpAndSettle();
+    expect(find.text('未登录'), findsWidgets);
+
+    // Sign-in opens as a dialog on demand.
+    await t.tap(find.byTooltip('设备会话'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('登录').first);
+    await t.pumpAndSettle();
+    expect(find.text('服务器地址'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/login_dialog_light.png'));
+    await t.tap(find.byTooltip('关闭'));
+    await t.pumpAndSettle();
+    expect(find.text('服务器地址'), findsNothing);
+  });
+
+  testWidgets('signed out on a phone: lists explain themselves, bottom nav works', (t) async {
+    await pumpApp(t, const AppState(), auth: AuthStatus.loggedOut, size: const Size(390, 844));
+    expect(find.text('还没有会话'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/guest_narrow_light.png'));
+    await t.tap(find.text('设备'));
+    await t.pumpAndSettle();
+    expect(find.text('我的 MacBook Pro'), findsOneWidget);
+    await t.tap(find.text('设置'));
+    await t.pumpAndSettle();
+    expect(find.text('账号与安全'), findsOneWidget);
   });
 
   testWidgets('composer sends on Enter', (t) async {

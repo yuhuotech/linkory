@@ -7,17 +7,53 @@ import '../../core/session.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
 
-class LoginPage extends ConsumerStatefulWidget {
+/// Sign-in is optional: the app is browsable without it. This opens the form as a dialog.
+Future<void> showLogin(BuildContext context, {bool register = false}) =>
+    showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.all(16),
+        child: Center(
+          child: SingleChildScrollView(
+            child: LoginCard(startInRegister: register, dismissible: true),
+          ),
+        ),
+      ),
+    );
+
+/// Stand-alone page variant (kept for tests / deep links).
+class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
   @override
-  ConsumerState<LoginPage> createState() => _LoginPageState();
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: context.c.bgSidebar,
+    body: const Center(child: SingleChildScrollView(child: LoginCard())),
+  );
 }
 
-class _LoginPageState extends ConsumerState<LoginPage> {
-  late final _server = TextEditingController(text: ref.read(sessionProvider).serverUrl);
-  late final _user = TextEditingController(text: ref.read(sessionProvider).username);
+class LoginCard extends ConsumerStatefulWidget {
+  const LoginCard({
+    super.key,
+    this.startInRegister = false,
+    this.dismissible = false,
+  });
+  final bool startInRegister, dismissible;
+  @override
+  ConsumerState<LoginCard> createState() => _LoginCardState();
+}
+
+class _LoginCardState extends ConsumerState<LoginCard> {
+  late final _server = TextEditingController(
+    text: ref.read(sessionProvider).serverUrl,
+  );
+  late final _user = TextEditingController(
+    text: ref.read(sessionProvider).username,
+  );
   final _pass = TextEditingController();
-  bool _register = false, _busy = false;
+  late bool _register = widget.startInRegister;
+  bool _busy = false;
   String? _error;
 
   Future<void> _submit() async {
@@ -28,7 +64,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
     final s = ref.read(sessionProvider.notifier);
     try {
-      if (_register) await s.register(_server.text, _user.text.trim(), _pass.text);
+      if (_register) {
+        await s.register(_server.text, _user.text.trim(), _pass.text);
+      }
       await s.login(_server.text, _user.text.trim(), _pass.text);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -41,55 +79,100 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Widget build(BuildContext context) {
     final c = context.c;
     Widget label(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 6, top: 14), child: Text(t, style: Type.caption.copyWith(color: c.text2)));
-    return Scaffold(
-      backgroundColor: c.bgSidebar,
-      body: Center(
-        child: Container(
-          width: 380,
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: c.bgCard,
-            borderRadius: BorderRadius.circular(Radii.dialog),
-            border: Border.all(color: c.border),
-            boxShadow: c.shadowLg,
-          ),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const BrandLogo(size: 32),
-              const SizedBox(width: 10),
-              Text('连信 Linkory', style: Type.page.copyWith(color: c.text1)),
-            ]),
+      padding: const EdgeInsets.only(bottom: 6, top: 14),
+      child: Text(t, style: Type.caption.copyWith(color: c.text2)),
+    );
+    // Close the dialog as soon as the session becomes signed in.
+    ref.listen(sessionProvider.select((x) => x.status), (_, st) {
+      if (st == AuthStatus.loggedIn && widget.dismissible && mounted) {
+        Navigator.of(context).maybePop();
+      }
+    });
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        width: 380,
+        constraints: const BoxConstraints(maxWidth: 380),
+        padding: const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          color: c.bgCard,
+          borderRadius: BorderRadius.circular(Radii.dialog),
+          border: Border.all(color: c.border),
+          boxShadow: c.shadowLg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const BrandLogo(size: 32),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '连信 Linkory',
+                    style: Type.page.copyWith(color: c.text1),
+                  ),
+                ),
+                if (widget.dismissible)
+                  LIconButton(
+                    icon: LucideIcons.x,
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
+              ],
+            ),
             const SizedBox(height: 4),
             Text('跨越距离，自由传递。', style: Type.body.copyWith(color: c.text3)),
             label('服务器地址'),
-            LTextField(controller: _server, hint: 'http://your-server:8080', prefix: Icon(LucideIcons.server, size: 14, color: c.text3)),
+            LTextField(
+              controller: _server,
+              hint: 'http://your-server:8080',
+              prefix: Icon(LucideIcons.server, size: 14, color: c.text3),
+            ),
             label('用户名'),
             LTextField(controller: _user, hint: '3-32 个字符', autofocus: true),
             label('密码'),
-            LTextField(controller: _pass, hint: '至少 8 位', obscure: true, onSubmitted: (_) => _submit()),
+            LTextField(
+              controller: _pass,
+              hint: '至少 8 位',
+              obscure: true,
+              onSubmitted: (_) => _submit(),
+            ),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(color: c.dangerSoft, borderRadius: BorderRadius.circular(Radii.control)),
-                  child: Text(_error!, style: Type.caption.copyWith(color: c.dangerText)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.dangerSoft,
+                    borderRadius: BorderRadius.circular(Radii.control),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: Type.caption.copyWith(color: c.dangerText),
+                  ),
                 ),
               ),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: Row(children: [
-                Expanded(
-                  child: LButton(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: LButton(
                       label: _register ? '注册并登录' : '登录',
                       variant: BtnVariant.solid,
                       loading: _busy,
-                      onPressed: _submit),
-                ),
-              ]),
+                      onPressed: _submit,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             Center(
@@ -97,12 +180,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 onTap: () => setState(() => _register = !_register),
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
-                  child: Text(_register ? '已有账号？去登录' : '没有账号？注册',
-                      style: Type.caption.copyWith(color: c.actionText)),
+                  child: Text(
+                    _register ? '已有账号？去登录' : '没有账号？注册',
+                    style: Type.caption.copyWith(color: c.actionText),
+                  ),
                 ),
               ),
             ),
-          ]),
+          ],
         ),
       ),
     );

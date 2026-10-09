@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/session.dart';
 import '../core/store.dart';
-import '../features/auth/login_page.dart';
 import '../features/shell/shell.dart';
 import '../theme/tokens.dart';
 
@@ -12,7 +11,6 @@ class LinkoryApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(sessionProvider.select((s) => s.status));
     ref.listen(sessionProvider.select((s) => s.status), (_, s) {
       if (s != AuthStatus.loggedIn) ref.read(storeProvider.notifier).stop();
     });
@@ -22,29 +20,35 @@ class LinkoryApp extends ConsumerWidget {
       themeMode: ref.watch(themeModeProvider),
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
-      home: switch (auth) {
-        AuthStatus.loggedIn => const _Authed(),
-        _ => const LoginPage(),
-      },
+      // Signing in is optional: the full UI is always available, it just is not connected.
+      home: const _Root(),
     );
   }
 }
 
-/// Starts the realtime link + data store once logged in; stops them on logout.
-class _Authed extends ConsumerStatefulWidget {
-  const _Authed();
+/// The shell is always shown. Once signed in (now or later) it starts the realtime link and data
+/// store; signing out stops them and returns to the browse-only state.
+class _Root extends ConsumerStatefulWidget {
+  const _Root();
   @override
-  ConsumerState<_Authed> createState() => _AuthedState();
+  ConsumerState<_Root> createState() => _RootState();
 }
 
-class _AuthedState extends ConsumerState<_Authed> {
+class _RootState extends ConsumerState<_Root> {
   late final StoreRef _store = ref.read(storeProvider.notifier);
+
+  void _connect() {
+    ref.read(sessionProvider.notifier).restoreTokens(ref.read(apiProvider));
+    Future.microtask(_store.start);
+  }
 
   @override
   void initState() {
     super.initState();
-    ref.read(sessionProvider.notifier).restoreTokens(ref.read(apiProvider));
-    Future.microtask(_store.start);
+    if (ref.read(sessionProvider).status == AuthStatus.loggedIn) _connect();
+    ref.listenManual(sessionProvider.select((s) => s.status), (prev, s) {
+      if (s == AuthStatus.loggedIn && prev != AuthStatus.loggedIn) _connect();
+    });
   }
 
   @override

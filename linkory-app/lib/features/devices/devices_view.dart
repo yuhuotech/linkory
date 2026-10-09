@@ -4,10 +4,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/api.dart';
 import '../../core/models.dart';
+import '../../core/session.dart';
 import '../../core/store.dart';
 import '../../shared/format.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
+import '../guest/guest.dart';
 
 class DevicesView extends ConsumerWidget {
   const DevicesView({super.key, required this.deviceId});
@@ -17,7 +19,8 @@ class DevicesView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.c;
     final st = ref.watch(storeProvider);
-    final d = deviceId == null ? null : st.device(deviceId!);
+    final guest = ref.watch(isGuestProvider);
+    final d = deviceId == null ? null : (deviceId == 'local' ? ref.watch(guestDeviceProvider).value : st.device(deviceId!));
     if (d == null) {
       return Column(children: [
         const PageHeader(title: '设备管理'),
@@ -34,10 +37,11 @@ class DevicesView extends ConsumerWidget {
         );
     return Column(children: [
       PageHeader(title: d.name, subtitle: d.current ? '本机' : null, actions: [
-        LButton(label: '重命名', icon: LucideIcons.pencil, compact: true, onPressed: () => _rename(context, ref, d)),
+        LButton(label: '重命名', icon: LucideIcons.pencil, compact: true, onPressed: guest ? null : () => _rename(context, ref, d)),
         if (!d.current)
           LButton(label: '移除设备', icon: LucideIcons.trash2, compact: true, onPressed: () => _remove(context, ref, d)),
       ]),
+      if (guest) const GuestBanner(),
       Expanded(
         child: ListView(padding: const EdgeInsets.all(24), children: [
           PanelCard(
@@ -50,7 +54,7 @@ class DevicesView extends ConsumerWidget {
                   Text(d.name, style: Type.section.copyWith(color: c.text1)),
                   const SizedBox(height: 4),
                   Row(children: [
-                    LBadge(online ? '在线' : '离线', bg: online ? c.successSoft : c.bgSubtle, fg: online ? c.successText : c.text2),
+                    LBadge(guest ? '未登录' : (online ? '在线' : '离线'), bg: online && !guest ? c.successSoft : c.bgSubtle, fg: online && !guest ? c.successText : c.text2),
                     const SizedBox(width: 6),
                     LBadge(deviceTypeLabel(d.type), outline: true),
                   ]),
@@ -62,13 +66,13 @@ class DevicesView extends ConsumerWidget {
           PanelCard(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
             child: Column(children: [
-              row('设备 ID', d.id),
+              row('设备 ID', guest ? '登录后由服务端分配' : d.id),
               Divider(height: 1, color: c.border),
               row('系统版本', d.osVersion),
               Divider(height: 1, color: c.border),
               row('客户端版本', d.appVersion),
               Divider(height: 1, color: c.border),
-              row('最近在线', online ? '现在' : fmtLastSeen(d.lastSeenAt)),
+              row('最近在线', guest ? '未登录' : (online ? '现在' : fmtLastSeen(d.lastSeenAt))),
             ]),
           ),
         ]),

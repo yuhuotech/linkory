@@ -92,5 +92,6 @@ Future<List<Override>> overrides(AppState s, {AuthStatus auth = AuthStatus.logge
     prefsProvider.overrideWithValue(prefs),
     secretsProvider.overrideWithValue(Secrets.memory(auth == AuthStatus.loggedIn ? {'access': 'a', 'refresh': 'r'} : {})),
     storeProvider.overrideWith(() => FakeStore(s)),
+    guestDeviceProvider.overrideWith((_) async => dev('local', '我的 MacBook Pro', 'macos', current: true)),
   ];
 }

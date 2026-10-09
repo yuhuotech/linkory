@@ -55,6 +55,7 @@ make app-macos-dmg                  # 打包 .dmg（未签名）
 - 圆角：控件 6、卡片 10、对话框 14。按钮高 32（compact 28），输入框高 32，徽标高 18，间距用 4 的倍数。
 - 图标用 Lucide；交互只有悬停底色 + 按下缩放 0.96，无水波纹，动画 ≤150ms。
 - 深色/浅色都必须正确；状态不能只靠颜色。改界面后更新 golden 并检查浅/深色。
+- 未登录也要能浏览全部界面（不强制登录）：新增依赖账号的入口时，提供未登录说明 + 登录入口（`GuestBanner`/`GuestEmpty`），见 UI_SPEC §11。
 - 改 token 时同步修改 `lib/theme/tokens.dart` 与 `docs/UI_SPEC.md`。
 
 ## 客户端架构
