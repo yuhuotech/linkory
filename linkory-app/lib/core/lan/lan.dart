@@ -17,25 +17,49 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as c;
 import 'package:cryptography/cryptography.dart';
 
+/// Diagnostics sink (set by the app to its log); never receives secrets or file contents.
+void Function(String message)? lanLog;
+
 const _magic = [0x4c, 0x4e, 0x4b, 0x31]; // "LNK1"
 const lanChunk = 256 * 1024;
 const _maxFrame = lanChunk + 64;
 final _rnd = Random.secure();
 
-Uint8List _rand(int n) => Uint8List.fromList(List.generate(n, (_) => _rnd.nextInt(256)));
+Uint8List _rand(int n) =>
+    Uint8List.fromList(List.generate(n, (_) => _rnd.nextInt(256)));
 
 Uint8List uuidBytes(String uuid) {
   final h = uuid.replaceAll('-', '');
-  return Uint8List.fromList([for (var i = 0; i < 32; i += 2) int.parse(h.substring(i, i + 2), radix: 16)]);
+  return Uint8List.fromList([
+    for (var i = 0; i < 32; i += 2) int.parse(h.substring(i, i + 2), radix: 16),
+  ]);
 }
 
-Uint8List hexToBytes(String h) => Uint8List.fromList([for (var i = 0; i < h.length; i += 2) int.parse(h.substring(i, i + 2), radix: 16)]);
+Uint8List hexToBytes(String h) => Uint8List.fromList([
+  for (var i = 0; i < h.length; i += 2)
+    int.parse(h.substring(i, i + 2), radix: 16),
+]);
 
 Uint8List _u64(int v) => (ByteData(8)..setUint64(0, v)).buffer.asUint8List();
 
-Uint8List _proof(Uint8List secret, String role, Uint8List id, Uint8List ns, Uint8List nr, int offset) {
+Uint8List _proof(
+  Uint8List secret,
+  String role,
+  Uint8List id,
+  Uint8List ns,
+  Uint8List nr,
+  int offset,
+) {
   final h = c.Hmac(c.sha256, secret);
-  return Uint8List.fromList(h.convert([...utf8.encode(role), ...id, ...ns, ...nr, ..._u64(offset)]).bytes);
+  return Uint8List.fromList(
+    h.convert([
+      ...utf8.encode(role),
+      ...id,
+      ...ns,
+      ...nr,
+      ..._u64(offset),
+    ]).bytes,
+  );
 }
 
 bool _eq(List<int> a, List<int> b) {
@@ -50,17 +74,21 @@ bool _eq(List<int> a, List<int> b) {
 /// Buffered exact-length reads over a socket stream.
 class _Reader {
   _Reader(Stream<Uint8List> s) {
-    _sub = s.listen((d) {
-      _q.add(d);
-      _have += d.length;
-      _wake();
-    }, onDone: () {
-      _closed = true;
-      _wake();
-    }, onError: (Object e) {
-      _closed = true;
-      _wake();
-    });
+    _sub = s.listen(
+      (d) {
+        _q.add(d);
+        _have += d.length;
+        _wake();
+      },
+      onDone: () {
+        _closed = true;
+        _wake();
+      },
+      onError: (Object e) {
+        _closed = true;
+        _wake();
+      },
+    );
   }
   late final StreamSubscription<Uint8List> _sub;
   final _q = <Uint8List>[];
@@ -74,7 +102,10 @@ class _Reader {
     if (w != null && !w.isCompleted) w.complete();
   }
 
-  Future<Uint8List> read(int n, {Duration timeout = const Duration(seconds: 30)}) async {
+  Future<Uint8List> read(
+    int n, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
     final deadline = DateTime.now().add(timeout);
     while (_have < n) {
       if (_closed) throw const SocketException('connection closed');
@@ -109,22 +140,37 @@ class _Aead {
   final _alg = Chacha20.poly1305Aead();
   int _n = 0;
 
-  static Future<_Aead> derive(Uint8List secret, Uint8List ns, Uint8List nr) async {
-    final k = await Hkdf(hmac: Hmac.sha256(), outputLength: 32)
-        .deriveKey(secretKey: SecretKey(secret), nonce: [...ns, ...nr], info: utf8.encode('linkory-lan-v1'));
+  static Future<_Aead> derive(
+    Uint8List secret,
+    Uint8List ns,
+    Uint8List nr,
+  ) async {
+    final k = await Hkdf(hmac: Hmac.sha256(), outputLength: 32).deriveKey(
+      secretKey: SecretKey(secret),
+      nonce: [...ns, ...nr],
+      info: utf8.encode('linkory-lan-v1'),
+    );
     return _Aead(k);
   }
 
   List<int> _nonce() => [0, 0, 0, 0, ..._u64(_n++)];
 
   Future<Uint8List> seal(int type, List<int> payload) async {
-    final box = await _alg.encrypt([type, ...payload], secretKey: _key, nonce: _nonce());
+    final box = await _alg.encrypt(
+      [type, ...payload],
+      secretKey: _key,
+      nonce: _nonce(),
+    );
     return Uint8List.fromList([...box.cipherText, ...box.mac.bytes]);
   }
 
   Future<(int, Uint8List)> open(Uint8List frame) async {
     if (frame.length < 17) throw const FormatException('short frame');
-    final box = SecretBox(frame.sublist(0, frame.length - 16), nonce: _nonce(), mac: Mac(frame.sublist(frame.length - 16)));
+    final box = SecretBox(
+      frame.sublist(0, frame.length - 16),
+      nonce: _nonce(),
+      mac: Mac(frame.sublist(frame.length - 16)),
+    );
     final plain = await _alg.decrypt(box, secretKey: _key);
     return (plain[0], Uint8List.fromList(plain.sublist(1)));
   }
@@ -132,7 +178,22 @@ class _Aead {
 
 // ---- sender ---------------------------------------------------------------------------------
 
-enum LanSendOutcome { ok, rejected, failed }
+/// ok = delivered and verified; rejected = peer refused (hash/size mismatch); failed = connection
+/// broke mid-way (worth retrying, the receiver keeps what it has); unreachable = no candidate
+/// address answered the handshake (not on the same network: go straight to the relay).
+enum LanSendOutcome { ok, rejected, failed, unreachable }
+
+class _Hs {
+  _Hs(this.sock, this.reader, this.ns, this.nr, this.offset);
+  final Socket sock;
+  final _Reader reader;
+  final Uint8List ns, nr;
+  final int offset;
+  void drop() {
+    unawaited(reader.cancel());
+    sock.destroy();
+  }
+}
 
 /// Connects to the receiver's candidate addresses and streams [file] (resuming at the receiver's
 /// offset). Returns `ok` only when the receiver confirms size + SHA-256.
@@ -146,17 +207,22 @@ Future<LanSendOutcome> lanSend({
   Duration connectTimeout = const Duration(seconds: 2),
   bool Function()? cancelled,
 }) async {
-  final sock = await _connectAny(addrs, port, connectTimeout);
-  if (sock == null) return LanSendOutcome.failed;
-  sock.setOption(SocketOption.tcpNoDelay, true);
-  final r = _Reader(sock);
+  final id = uuidBytes(taskId);
+  // Race all candidates through the authenticated handshake: a middlebox that merely accepts TCP
+  // connections (VPN/proxy TUN, router) must not win over the real peer.
+  final hs = await _handshakeAny(addrs, port, connectTimeout, id, secret);
+  if (hs == null) {
+    lanLog?.call(
+      'send: no candidate completed the handshake (${addrs.join(',')}:$port)',
+    );
+    return LanSendOutcome.unreachable;
+  }
+  final sock = hs.sock,
+      r = hs.reader,
+      ns = hs.ns,
+      nr = hs.nr,
+      offset = hs.offset;
   try {
-    final id = uuidBytes(taskId), ns = _rand(16);
-    sock.add([..._magic, ...id, ...ns]);
-    final head = await r.read(16 + 8 + 32, timeout: const Duration(seconds: 10));
-    final nr = head.sublist(0, 16);
-    final offset = ByteData.sublistView(head, 16, 24).getUint64(0);
-    if (!_eq(head.sublist(24), _proof(secret, 'R', id, ns, nr, offset))) return LanSendOutcome.rejected; // not our peer
     sock.add(_proof(secret, 'S', id, ns, nr, offset));
     final len = await file.length();
     if (offset > len) return LanSendOutcome.failed;
@@ -172,7 +238,10 @@ Future<LanSendOutcome> lanSend({
         final buf = await raf.read(min(lanChunk, len - sent));
         if (buf.isEmpty) return LanSendOutcome.failed;
         final f = await aead.seal(0, buf);
-        sock.add([...(ByteData(4)..setUint32(0, f.length)).buffer.asUint8List(), ...f]);
+        sock.add([
+          ...(ByteData(4)..setUint32(0, f.length)).buffer.asUint8List(),
+          ...f,
+        ]);
         sent += buf.length;
         onProgress?.call(sent);
         await sock.flush(); // back-pressure: keep memory flat
@@ -181,11 +250,17 @@ Future<LanSendOutcome> lanSend({
       await raf.close();
     }
     final end = await aead.seal(1, const []);
-    sock.add([...(ByteData(4)..setUint32(0, end.length)).buffer.asUint8List(), ...end]);
+    sock.add([
+      ...(ByteData(4)..setUint32(0, end.length)).buffer.asUint8List(),
+      ...end,
+    ]);
     await sock.flush();
     final ack = await r.read(1, timeout: const Duration(seconds: 60));
     return ack[0] == 1 ? LanSendOutcome.ok : LanSendOutcome.rejected;
-  } catch (_) {
+  } catch (e) {
+    lanLog?.call(
+      'send: ${e.runtimeType} ${e is SocketException ? e.message : ''}',
+    );
     return LanSendOutcome.failed;
   } finally {
     await r.cancel();
@@ -193,20 +268,54 @@ Future<LanSendOutcome> lanSend({
   }
 }
 
-Future<Socket?> _connectAny(List<String> addrs, int port, Duration timeout) async {
+/// Connect + hello + verify the receiver's proof, for every candidate in parallel; first verified wins.
+Future<_Hs?> _handshakeAny(
+  List<String> addrs,
+  int port,
+  Duration timeout,
+  Uint8List id,
+  Uint8List secret,
+) async {
   if (addrs.isEmpty) return null;
-  final done = Completer<Socket?>();
+  final done = Completer<_Hs?>();
   var pending = addrs.length;
-  for (final a in addrs) {
-    Socket.connect(a, port, timeout: timeout).then((s) {
-      if (done.isCompleted) {
-        s.destroy();
-      } else {
-        done.complete(s);
+
+  Future<void> attempt(String addr) async {
+    _Hs? hs;
+    Socket? sock;
+    _Reader? r;
+    try {
+      sock = await Socket.connect(addr, port, timeout: timeout);
+      sock.done.ignore(); // writes to a hung-up peer surface here; the read side reports the failure
+      sock.setOption(SocketOption.tcpNoDelay, true);
+      r = _Reader(sock);
+      final ns = _rand(16);
+      sock.add([..._magic, ...id, ...ns]);
+      final head = await r.read(
+        16 + 8 + 32,
+        timeout: timeout + const Duration(seconds: 3),
+      );
+      final nr = head.sublist(0, 16);
+      final offset = ByteData.sublistView(head, 16, 24).getUint64(0);
+      if (_eq(head.sublist(24), _proof(secret, 'R', id, ns, nr, offset))) {
+        hs = _Hs(sock, r, ns, nr, offset);
       }
-    }).catchError((Object _) {
-      if (--pending == 0 && !done.isCompleted) done.complete(null);
-    });
+    } catch (_) {}
+    if (hs != null && !done.isCompleted) {
+      done.complete(hs);
+      return;
+    }
+    if (hs != null) {
+      hs.drop(); // a slower candidate that also reached the peer
+    } else {
+      unawaited(r?.cancel());
+      sock?.destroy();
+    }
+    if (--pending == 0 && !done.isCompleted) done.complete(null);
+  }
+
+  for (final a in addrs) {
+    unawaited(attempt(a));
   }
   return done.future;
 }
@@ -215,7 +324,13 @@ Future<Socket?> _connectAny(List<String> addrs, int port, Duration timeout) asyn
 
 /// What the listener needs to know about a task the user accepted.
 class LanIncoming {
-  LanIncoming({required this.taskId, required this.secret, required this.size, required this.sha256, required this.part});
+  LanIncoming({
+    required this.taskId,
+    required this.secret,
+    required this.size,
+    required this.sha256,
+    required this.part,
+  });
   final String taskId;
   final Uint8List secret;
   final int size;
@@ -224,7 +339,13 @@ class LanIncoming {
 }
 
 class LanHooks {
-  LanHooks({required this.lookup, this.onStart, this.onProgress, required this.onVerified, this.onFailed});
+  LanHooks({
+    required this.lookup,
+    this.onStart,
+    this.onProgress,
+    required this.onVerified,
+    this.onFailed,
+  });
 
   /// Task by id, or null if not accepted by this device (connection is dropped).
   final LanIncoming? Function(String taskId) lookup;
@@ -252,53 +373,79 @@ class LanListener {
   int get port => _server.port;
 
   static Future<LanListener> bind(LanHooks hooks, {int port = 0}) async =>
-      LanListener._(await ServerSocket.bind(InternetAddress.anyIPv4, port), hooks);
+      LanListener._(
+        await ServerSocket.bind(InternetAddress.anyIPv4, port),
+        hooks,
+      );
 
   Future<void> close() => _server.close();
 
   Future<void> _handle(Socket sock) async {
+    sock.done.ignore();
     sock.setOption(SocketOption.tcpNoDelay, true);
     final r = _Reader(sock);
     String? tid;
     var authed = false;
     try {
-      final hello = await r.read(4 + 16 + 16, timeout: const Duration(seconds: 10));
+      final hello = await r.read(
+        4 + 16 + 16,
+        timeout: const Duration(seconds: 10),
+      );
       if (!_eq(hello.sublist(0, 4), _magic)) return;
       final id = hello.sublist(4, 20), ns = hello.sublist(20);
       final taskId = _fmtUuid(id);
       final task = _hooks.lookup(taskId);
-      if (task == null || _active.contains(taskId)) return;
-      tid = taskId;
-      _active.add(taskId);
+      if (task == null) {
+        lanLog?.call(
+          'recv: task not served here (unknown or not accepted yet)',
+        );
+        return;
+      }
 
-      // Resume: hash what we already have so the digest covers the whole file.
+      // Resume point = bytes already held. Only the length goes into the proof; the digest of that
+      // prefix is computed after the peer authenticated (cheap probes cost nothing).
       var have = task.part.existsSync() ? task.part.lengthSync() : 0;
       if (have > task.size) {
         await task.part.delete();
         have = 0;
       }
+      final nr = _rand(16);
+      sock.add([
+        ...nr,
+        ..._u64(have),
+        ..._proof(task.secret, 'R', id, ns, nr, have),
+      ]);
+      final sp = await r.read(32, timeout: const Duration(seconds: 10));
+      if (!_eq(sp, _proof(task.secret, 'S', id, ns, nr, have))) return;
+      if (!_active.add(taskId)) {
+        lanLog?.call('recv: task already has a live session');
+        return;
+      }
+      tid = taskId;
+      authed = true;
+      _hooks.onStart?.call(taskId);
       final acc = _Hash();
       if (have > 0) {
         await for (final ch in task.part.openRead()) {
           acc.add(ch);
         }
       }
-      final nr = _rand(16);
-      sock.add([...nr, ..._u64(have), ..._proof(task.secret, 'R', id, ns, nr, have)]);
-      final sp = await r.read(32, timeout: const Duration(seconds: 10));
-      if (!_eq(sp, _proof(task.secret, 'S', id, ns, nr, have))) return;
-      authed = true;
-      _hooks.onStart?.call(taskId);
 
       final aead = await _Aead.derive(task.secret, ns, nr);
-      final sink = task.part.openWrite(mode: have > 0 ? FileMode.append : FileMode.write);
+      final sink = task.part.openWrite(
+        mode: have > 0 ? FileMode.append : FileMode.write,
+      );
       var got = have;
       var ended = false;
       try {
         while (!ended) {
-          final len = ByteData.sublistView(await r.read(4, timeout: const Duration(seconds: 30))).getUint32(0);
+          final len = ByteData.sublistView(
+            await r.read(4, timeout: const Duration(seconds: 30)),
+          ).getUint32(0);
           if (len > _maxFrame) throw const FormatException('frame too large');
-          final (type, payload) = await aead.open(await r.read(len, timeout: const Duration(seconds: 30)));
+          final (type, payload) = await aead.open(
+            await r.read(len, timeout: const Duration(seconds: 30)),
+          );
           if (type == 1) {
             ended = true;
           } else {
@@ -325,8 +472,11 @@ class LanListener {
       sock.add([saved ? 1 : 0]);
       await sock.flush();
       if (!saved) _hooks.onFailed?.call(taskId, corrupt: false);
-    } catch (_) {
-      if (authed && tid != null) _hooks.onFailed?.call(tid, corrupt: false); // interrupted: part kept for resume
+    } catch (e) {
+      lanLog?.call('recv: ${e.runtimeType}');
+      if (authed && tid != null) {
+        _hooks.onFailed?.call(tid, corrupt: false); // interrupted: part kept for resume
+      }
     } finally {
       if (tid != null) _active.remove(tid);
       await r.cancel();
@@ -336,7 +486,8 @@ class LanListener {
 }
 
 String _fmtUuid(List<int> b) {
-  String h(int a, int z) => b.sublist(a, z).map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+  String h(int a, int z) =>
+      b.sublist(a, z).map((x) => x.toRadixString(16).padLeft(2, '0')).join();
   return '${h(0, 4)}-${h(4, 6)}-${h(6, 8)}-${h(8, 10)}-${h(10, 16)}';
 }
 
@@ -366,9 +517,15 @@ class _Sink implements Sink<c.Digest> {
 Future<List<String>> localLanAddresses() async {
   final out = <String>[];
   try {
-    for (final i in await NetworkInterface.list(type: InternetAddressType.IPv4)) {
+    for (final i in await NetworkInterface.list(
+      type: InternetAddressType.IPv4,
+    )) {
       for (final a in i.addresses) {
-        if (!a.isLoopback && (a.rawAddress[0] == 10 || (a.rawAddress[0] == 172 && (a.rawAddress[1] & 0xf0) == 16) || (a.rawAddress[0] == 192 && a.rawAddress[1] == 168) || (a.rawAddress[0] == 169 && a.rawAddress[1] == 254))) {
+        if (!a.isLoopback &&
+            (a.rawAddress[0] == 10 ||
+                (a.rawAddress[0] == 172 && (a.rawAddress[1] & 0xf0) == 16) ||
+                (a.rawAddress[0] == 192 && a.rawAddress[1] == 168) ||
+                (a.rawAddress[0] == 169 && a.rawAddress[1] == 254))) {
           out.add(a.address);
         }
       }

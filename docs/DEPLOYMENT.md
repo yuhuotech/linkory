@@ -96,3 +96,16 @@ server {
 3. 互发消息，一端断网再恢复后补发且不重复（AT-03/04/05）。
 4. 发送文件，接收端确认后完成，校验一致（AT-07/08）。
 5. 移除设备后，旧凭证访问返回 401（AT-11）。
+
+## 8. 局域网测试端点（开发用）
+
+仓库自带一键脚本，把服务端部署到一台 Ubuntu 机器（`tools/deploy.env` 配置主机与端口，需免密 ssh 和 sudo）：
+
+```sh
+make deploy          # 本机交叉编译 linux 二进制 → 上传 → systemd 重启 → 健康检查
+make deploy-status   # 服务状态
+make deploy-logs     # 最近日志
+```
+
+首次执行会自动：创建系统用户 `linkory`、在该机 MySQL 中建库与账号（随机口令）、生成 JWT 密钥并写入 `/etc/linkory/server.env`（root:linkory 640）、安装并启用 `linkory-server.service`。之后重复执行只更新二进制并重启，不会轮换口令或密钥。该机上的客户端通过 `tools/deploy_linux_node.sh` 构建运行，`tools/cross_e2e.sh` 做跨主机联调。
+

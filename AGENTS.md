@@ -30,11 +30,18 @@ make e2e                            # 双客户端对真实服务端（先 make 
 # 真实窗口集成测试（会启动 macOS 应用并把截图写到沙盒 tmp，路径见输出 "SHOTS ..."）
 cd linkory-app && flutter test integration_test/app_test.dart -d macos --dart-define=LINKORY_E2E_URL=http://127.0.0.1:8090
 make app-macos-dmg                  # 打包 .dmg（未签名）
+
+# 局域网测试服务器（tools/deploy.env：ubuntu@172.17.32.251，服务端口 8090，免密 ssh）
+make deploy                         # 构建 linux/amd64 服务端并部署重启（首次自动建库建账号、生成 JWT 密钥，systemd 服务 linkory-server）
+make deploy-status / deploy-logs
+tools/deploy_linux_node.sh build|start|stop|status|shot   # 在该服务器上构建并运行 Linux 版应用（Xvfb 虚拟显示，systemd 服务 linkory-node）
+tools/cross_e2e.sh                  # 跨主机联调：本机 ↔ 服务器上的真实 Linux 应用（消息往返 + 双向文件，默认断言走局域网直连）
 ```
 
 - Flutter 装在 `~/development/flutter`（PATH 在 `~/.zshrc`，使用 flutter-io.cn 镜像）。Xcode 已装，`flutter build macos --debug` 可通过；应用包名 `com.yuhuo.linkory`。
 - 服务端集成测试需要 `LINKORY_TEST_DSN`（指向本机 MySQL 的 `linkory_test` 库），未设置时测试会跳过；DSN 与密码只放在被 git 忽略的 `linkory-server/.env.local`，不要写入受版本控制的文件。
-- 本机 8080 被 nginx 占用，开发时服务端用 `LINKORY_ADDR=:8090`，客户端默认地址也是 8090。
+- 本机 8080 被 nginx 占用，开发时服务端用 `LINKORY_ADDR=:8090`。`make app-run` 默认让客户端连局域网测试服务端（`LINKORY_SERVER=http://127.0.0.1:8090` 可改连本机）；不带该 define 的构建默认地址是 `http://127.0.0.1:8090`。
+- 测试服务器上的敏感配置（数据库口令、JWT 密钥）只在服务器 `/etc/linkory/server.env`，不在仓库里。该机没有登录桌面会话，GUI 只能跑在 Xvfb 上。
 
 ## 服务端架构（需跨文件理解的部分）
 

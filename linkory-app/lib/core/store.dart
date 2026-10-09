@@ -154,6 +154,7 @@ class AppStore extends Notifier<AppState> {
   }
 
   Future<void> start() async {
+    lanLog = (m) => Log.info('lan', m);
     _evSub ??= _rt.events.listen(_onEvent);
     _stSub ??= _rt.stateStream.listen((s) {
       state = state.copyWith(link: s);
@@ -602,7 +603,7 @@ class AppStore extends Notifier<AppState> {
           return; // the receiver completes the task with the server
         }
         if (!(_transfer(t.id)?.active ?? false)) return; // cancelled meanwhile
-        if (out == LanSendOutcome.rejected) break;
+        if (out == LanSendOutcome.rejected || out == LanSendOutcome.unreachable) break;
         await Future<void>.delayed(const Duration(seconds: 1));
       }
       if (mode == 'lan') {
