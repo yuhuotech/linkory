@@ -71,7 +71,7 @@ jobs:
       - name: Linux desktop build dependencies (plugins need GTK etc. to analyse/compile)
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libayatana-appindicator3-dev libnotify-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libayatana-appindicator3-dev libnotify-dev fonts-noto-cjk
       - name: Flutter analyze + tests (includes the Dart<->Rust LNK1 interop)
         working-directory: linkory-app
         run: |

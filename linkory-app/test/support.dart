@@ -30,20 +30,38 @@ class FakeStore extends AppStore {
 }
 
 Future<void> loadTestFonts() async {
-  final lucide = Directory('${Platform.environment['HOME']}/.pub-cache/hosted/pub.flutter-io.cn')
-      .listSync()
-      .whereType<Directory>()
-      .where((d) => d.path.contains('lucide_icons_flutter-'))
-      .map((d) => File('${d.path}/assets/lucide.ttf'))
-      .where((f) => f.existsSync())
-      .firstOrNull;
+  // The icon font lives in the pub cache; its host directory differs per machine (pub.dev, a
+  // mirror, ...), so look in every hosted source, honouring PUB_CACHE.
+  final cache = Platform.environment['PUB_CACHE'] ?? '${Platform.environment['HOME']}/.pub-cache';
+  final hosted = Directory('$cache/hosted');
+  final lucide = !hosted.existsSync()
+      ? null
+      : hosted
+          .listSync()
+          .whereType<Directory>()
+          .expand((h) => h.listSync().whereType<Directory>())
+          .where((d) => d.path.contains('lucide_icons_flutter-'))
+          .map((d) => File('${d.path}/assets/lucide.ttf'))
+          .where((f) => f.existsSync())
+          .firstOrNull;
   if (lucide != null) {
     final l = FontLoader('packages/lucide_icons_flutter/Lucide')..addFont(Future.value(ByteData.sublistView(lucide.readAsBytesSync())));
     await l.load();
   }
-  // Real glyphs (incl. CJK) instead of Ahem boxes so screenshots are readable.
-  final f = File('/Library/Fonts/Arial Unicode.ttf');
-  if (!f.existsSync()) return;
+  // Real glyphs (incl. CJK) instead of Ahem boxes so screenshots are readable and text widths are
+  // realistic (Ahem is 1em per character, which makes dense layouts overflow). Pick whatever CJK font
+  // the machine has: Arial Unicode on macOS, Noto CJK on Linux CI (apt: fonts-noto-cjk).
+  if (Platform.environment['LINKORY_TEST_NO_CJK_FONT'] == '1') return;
+  final candidates = [
+    if (Platform.environment['LINKORY_TEST_CJK_FONT'] != null) Platform.environment['LINKORY_TEST_CJK_FONT']!,
+    '/Library/Fonts/Arial Unicode.ttf',
+    '/System/Library/Fonts/Supplemental/Songti.ttc',
+    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+    '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+    '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
+  ];
+  final f = candidates.map(File.new).where((f) => f.existsSync()).firstOrNull;
+  if (f == null) return;
   final bytes = f.readAsBytesSync();
   for (final family in ['PingFang SC', 'Roboto', '.AppleSystemUIFont']) {
     final l = FontLoader(family)..addFont(Future.value(ByteData.sublistView(bytes)));
