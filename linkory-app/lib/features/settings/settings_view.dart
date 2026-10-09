@@ -29,10 +29,10 @@ final settingsTabProvider = NotifierProvider<SettingsTabNotifier, SettingsTab>(
 extension SettingsTabX on SettingsTab {
   String get label => switch (this) {
     SettingsTab.account => '账号与安全',
-    SettingsTab.general => '通用',
-    SettingsTab.transfer => '传输',
+    SettingsTab.general => '通用设置',
+    SettingsTab.transfer => '网络传输',
     SettingsTab.update => '软件更新',
-    SettingsTab.about => '关于',
+    SettingsTab.about => '关于连信',
   };
   IconData get icon => switch (this) {
     SettingsTab.account => LucideIcons.userRound,

@@ -70,7 +70,7 @@ class _CloseDialogState extends State<_CloseDialog> {
                 child: _remember ? Icon(LucideIcons.check, size: 12, color: c.actionFg) : null,
               ),
               const SizedBox(width: 8),
-              Expanded(child: Text('记住我的选择（可在 设置 → 通用 中修改）', style: Type.caption.copyWith(color: c.text2))),
+              Expanded(child: Text('记住我的选择（可在 设置 → 通用设置 中修改）', style: Type.caption.copyWith(color: c.text2))),
             ]),
           ),
         ),

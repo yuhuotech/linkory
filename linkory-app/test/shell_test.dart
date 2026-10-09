@@ -107,7 +107,7 @@ void main() {
   testWidgets('transfer settings: auto-accept switch is on by default', (t) async {
     await pumpApp(t, fixtureState(section: Section.settings));
     final c = ProviderScope.containerOf(t.element(find.byType(LinkoryApp)));
-    await t.tap(find.text('传输').first);
+    await t.tap(find.text('网络传输').first);
     await t.pumpAndSettle();
     expect(find.textContaining('自动接收'), findsWidgets);
     expect(c.read(storeProvider).autoAccept, isTrue);
