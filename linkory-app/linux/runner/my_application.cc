@@ -10,9 +10,23 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  gboolean transparent;  // the window has an alpha channel and a compositor draws it
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
+// Dart asks whether the window can have transparent corners (needs an RGBA visual + a compositor).
+static void window_method_cb(FlMethodChannel* channel, FlMethodCall* call, gpointer user_data) {
+  MyApplication* self = MY_APPLICATION(user_data);
+  g_autoptr(FlMethodResponse) response = nullptr;
+  if (g_strcmp0(fl_method_call_get_name(call), "isTransparent") == 0) {
+    g_autoptr(FlValue) result = fl_value_new_bool(self->transparent);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  } else {
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+  fl_method_call_respond(call, response, nullptr);
+}
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -54,6 +68,25 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
+  // Transparent window so the app can draw its own rounded corners (frameless windows are otherwise
+  // rectangular). Only when a compositor can blend the alpha channel; otherwise stay opaque.
+  {
+    GdkScreen* gdk_screen = gtk_window_get_screen(window);
+    GdkVisual* rgba = gdk_screen_get_rgba_visual(gdk_screen);
+    if (rgba != nullptr && gdk_screen_is_composited(gdk_screen)) {
+      gtk_widget_set_visual(GTK_WIDGET(window), rgba);
+      gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
+      GtkCssProvider* css = gtk_css_provider_new();
+      gtk_css_provider_load_from_data(
+          css, "window, window.background, decoration { background: transparent; box-shadow: none; border: none; }",
+          -1, nullptr);
+      gtk_style_context_add_provider_for_screen(gdk_screen, GTK_STYLE_PROVIDER(css),
+                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+      g_object_unref(css);
+      self->transparent = TRUE;
+    }
+  }
+
   // Resolve bundled Flutter asset beside the executable, independent of cwd.
   g_autofree gchar* executable = g_file_read_link("/proc/self/exe", nullptr);
   if (executable != nullptr) {
@@ -72,7 +105,7 @@ static void my_application_activate(GApplication* application) {
   GdkRGBA background_color;
   // Background defaults to black, override it here if necessary, e.g. #00000000
   // for transparent.
-  gdk_rgba_parse(&background_color, "#000000");
+  gdk_rgba_parse(&background_color, self->transparent ? "#00000000" : "#000000");
   fl_view_set_background_color(view, &background_color);
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
@@ -84,6 +117,11 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  FlMethodChannel* window_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)), "com.yuhuo.linkory/window", FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(window_channel, window_method_cb, g_object_ref(self), g_object_unref);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

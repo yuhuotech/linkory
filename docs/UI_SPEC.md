@@ -182,3 +182,11 @@ macOS AppIcon 同时用于 Finder、Dock 与系统应用入口；菜单栏使用
 - 下载中只能取消；安装阶段显示「正在安装，应用即将自动重启…」。
 - **下载源选择**（`UpdateSourcePicker`）：「GitHub 官方」（默认）/「国内加速」两个 compact 按钮，选中的为 solid，下方一行灰色说明（加速时附当前使用的加速站）。设置 → 软件更新里是「下载源」一行（切换后立即重新检查）；更新对话框里放在更新说明与进度条之间（只影响本次下载）。官方源连不上时，检查失败的提示会直接建议切换到「国内加速」。
 - **图标栏顶部留白**：macOS 为 44px（给红绿灯）；Windows / Linux 左上角没有系统按钮，顶部留白取与 logo 左右边距相同的 22px（(72−28)/2），让 logo 在角落里上、左间距一致。
+
+## 16. 窗口圆角
+
+- **macOS**：系统原生圆角。
+- **Linux**：无边框窗口默认是直角。启动器（`linux/runner/my_application.cc`）在有合成器（Wayland、GNOME/KDE 的 X11 等）时给 GTK 窗口换成 RGBA 视觉并把 Flutter 视图背景设为透明，并通过通道 `com.yuhuo.linkory/window.isTransparent` 告诉 Dart；`RoundedWindow` 随后把整个应用裁成 12px 圆角并描一圈 0.7 透明度的 `borderStrong` 细边。最大化 / 全屏时恢复直角。没有合成器时保持不透明直角（不会出现黑角）。
+- **Windows**：运行器在创建窗口后向 DWM 请求圆角（`DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND`），Windows 11 生效；Windows 10 系统不支持，保持直角。
+- 新增会覆盖整个窗口的元素（遮罩、启动画面）时要考虑圆角，不要在窗口最外层再画不透明的直角背景。
+

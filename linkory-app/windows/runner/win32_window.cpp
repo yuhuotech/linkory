@@ -146,6 +146,11 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
+  // Windows 11: rounded corners even though the title bar is hidden (DWMWA_WINDOW_CORNER_PREFERENCE = 33,
+  // DWMWCP_ROUND = 2). Older Windows ignore the attribute and keep square corners.
+  const DWORD corner_preference = 2;
+  DwmSetWindowAttribute(window, 33, &corner_preference, sizeof(corner_preference));
+
   return OnCreate();
 }
 

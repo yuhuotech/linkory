@@ -10,6 +10,7 @@ import '../core/session.dart';
 import '../core/store.dart';
 import '../core/updater.dart';
 import '../shared/close_dialog.dart';
+import '../shared/rounded_window.dart';
 import '../features/shell/shell.dart';
 import '../theme/tokens.dart';
 
@@ -30,8 +31,8 @@ class LinkoryApp extends ConsumerWidget {
       darkTheme: buildTheme(Brightness.dark),
       // Signing in is optional: the full UI is always available, it just is not connected.
       // Frameless window on Linux has no native resize borders: add invisible edge handles.
-      builder: (context, child) => (isDesktop && Platform.isLinux)
-          ? DragToResizeArea(child: child!)
+      builder: (context, child) => (windowShellActive && Platform.isLinux)
+          ? DragToResizeArea(child: RoundedWindow(child: child!))
           : child!,
       home: const _Root(),
     );
