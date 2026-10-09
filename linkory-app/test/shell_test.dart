@@ -248,6 +248,15 @@ void main() {
     await t.pumpAndSettle();
     expect(find.byTooltip('关闭（Esc）'), findsNothing);
 
+    // A single click closes right away: well inside the old ~300ms double-tap wait.
+    await t.tap(find.byType(ImagePreview));
+    await t.pumpAndSettle();
+    expect(find.byTooltip('关闭（Esc）'), findsOneWidget);
+    await t.tapAt(const Offset(600, 500));
+    await t.pump(); // the tap is delivered and the 90ms fade-out starts
+    await t.pump(const Duration(milliseconds: 120));
+    expect(find.byTooltip('关闭（Esc）'), findsNothing, reason: 'closing must not wait for a possible double-click');
+
     // A file that no longer exists shows no preview (and no broken-image box).
     File(path).deleteSync();
     FakeStore.files['pic'] = '${path}_gone';

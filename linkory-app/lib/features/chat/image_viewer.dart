@@ -6,8 +6,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../theme/tokens.dart';
 
-/// Full-window image preview: pinch / scroll to zoom, drag to pan, double-click to toggle 2.5×, Esc or
-/// a click on the empty background to close. The picture is decoded at most [maxDecode] px on its long
+/// Full-window image preview: pinch / scroll to zoom, drag to pan, the toolbar button toggles 2.5×, and a click anywhere or Esc closes
+/// it immediately. The picture is decoded at most [maxDecode] px on its long
 /// side (a 48-megapixel photo must not cost 200 MB); "open" hands the untouched original to the system viewer.
 Future<void> showImageViewer(
   BuildContext context, {
@@ -20,7 +20,7 @@ Future<void> showImageViewer(
   barrierDismissible: false,
   barrierLabel: '关闭图片预览',
   barrierColor: Colors.black.withValues(alpha: .88),
-  transitionDuration: const Duration(milliseconds: 120),
+  transitionDuration: const Duration(milliseconds: 90),
   transitionBuilder: (_, a, _, child) =>
       FadeTransition(opacity: a, child: child),
   pageBuilder: (_, _, _) =>
@@ -44,7 +44,6 @@ class _ImageViewer extends StatefulWidget {
 
 class _ImageViewerState extends State<_ImageViewer> {
   final _tc = TransformationController();
-  Offset _lastDoubleTap = Offset.zero;
 
   @override
   void dispose() {
@@ -54,16 +53,17 @@ class _ImageViewerState extends State<_ImageViewer> {
 
   bool get _zoomed => _tc.value.getMaxScaleOnAxis() > 1.05;
 
-  void _toggleZoom() {
+  void _toggleZoom(Size area) {
     if (_zoomed) {
       _tc.value = Matrix4.identity();
     } else {
-      const s = 2.5;
-      final p = _lastDoubleTap;
+      const k = 2.5;
+      final c = Offset(area.width / 2, area.height / 2); // zoom about the centre of the window
       _tc.value = Matrix4.identity()
-        ..translateByDouble(-p.dx * (s - 1), -p.dy * (s - 1), 0, 1)
-        ..scaleByDouble(s, s, 1, 1);
+        ..translateByDouble(-c.dx * (k - 1), -c.dy * (k - 1), 0, 1)
+        ..scaleByDouble(k, k, 1, 1);
     }
+    setState(() {});
   }
 
   @override
@@ -82,11 +82,10 @@ class _ImageViewerState extends State<_ImageViewer> {
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    if (!_zoomed) close();
-                  },
-                  onDoubleTapDown: (d) => _lastDoubleTap = d.localPosition,
-                  onDoubleTap: _toggleZoom,
+                  // A plain tap closes at once. No double-tap handler on purpose: with one, Flutter waits
+                  // ~300ms after every tap to see whether a second follows, which made closing feel
+                  // sluggish. Zoom with the wheel / pinch or the toolbar button instead.
+                  onTap: () => close(),
                   child: InteractiveViewer(
                     transformationController: _tc,
                     minScale: 0.5,
@@ -136,7 +135,12 @@ class _ImageViewerState extends State<_ImageViewer> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (widget.onOpen != null)
+                      _ViewerButton(
+                    icon: _zoomed ? LucideIcons.zoomOut : LucideIcons.zoomIn,
+                    tooltip: _zoomed ? '还原' : '放大',
+                    onTap: () => _toggleZoom(MediaQuery.sizeOf(context)),
+                  ),
+                  if (widget.onOpen != null)
                         _ViewerButton(
                           icon: LucideIcons.externalLink,
                           tooltip: '用系统程序打开原图',
@@ -164,7 +168,7 @@ class _ImageViewerState extends State<_ImageViewer> {
                 child: IgnorePointer(
                   child: Center(
                     child: Text(
-                      '滚轮缩放 · 拖动平移 · 双击放大 · Esc 关闭',
+                      '滚轮缩放 · 拖动平移 · 单击或 Esc 关闭',
                       style: Type.caption.copyWith(color: Colors.white54),
                     ),
                   ),
