@@ -20,6 +20,7 @@ make server-run      # 用 .env.local 启动服务端；端口上已有 linkory-
 # 单个服务端测试
 cd linkory-server && set -a && . ./.env.local && set +a && go test ./internal/httpapi -run TestName -v
 
+make app-run                        # 按当前系统自动选桌面目标启动客户端（DEVICE=xxx 指定其他设备）
 cd linkory-app && flutter analyze && flutter test        # = make app-test
 cd linkory-app && flutter test test/shell_test.dart --plain-name "name"
 cd linkory-app && flutter test --update-goldens   # 更新 test/goldens/*.png

@@ -22,3 +22,8 @@ core-build:
 # 需要先 make server-run（默认 :8090）；LINKORY_E2E_BIG_MB=1024 可加测大文件
 e2e:
 	cd linkory-app && LINKORY_E2E_URL=$${LINKORY_E2E_URL:-http://127.0.0.1:8090} flutter test test/e2e_test.dart
+
+.PHONY: app-run
+# 按当前系统自动选择桌面目标；想跑别的设备：make app-run DEVICE=emulator-5554
+app-run:
+	cd linkory-app && flutter run -d $(or $(DEVICE),$(shell case "$$(uname -s)" in Darwin) echo macos;; Linux) echo linux;; *) echo windows;; esac))
