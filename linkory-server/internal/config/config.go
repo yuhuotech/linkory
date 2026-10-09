@@ -13,6 +13,7 @@ type Config struct {
 	RefreshTokenTTL  time.Duration
 	OfflineMsgTTL    time.Duration
 	MaxTransferBytes int64
+	JWTSecret        string
 }
 
 func Load() Config {
@@ -22,6 +23,7 @@ func Load() Config {
 		AccessTokenTTL:   envDuration("LINKORY_ACCESS_TTL", 15*time.Minute),
 		RefreshTokenTTL:  envDuration("LINKORY_REFRESH_TTL", 30*24*time.Hour),
 		OfflineMsgTTL:    envDuration("LINKORY_OFFLINE_MSG_TTL", 30*24*time.Hour),
+		JWTSecret:        env("LINKORY_JWT_SECRET", ""),
 		MaxTransferBytes: envInt64("LINKORY_MAX_TRANSFER_BYTES", 2<<30),
 	}
 }

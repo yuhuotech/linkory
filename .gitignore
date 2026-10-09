@@ -4,3 +4,4 @@
 /linkory-core/target/
 /linkory-app/build/
 .dart_tool/
+.env.local

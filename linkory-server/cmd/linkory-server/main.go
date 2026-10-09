@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/linkory/linkory-server/internal/auth"
 	"github.com/linkory/linkory-server/internal/config"
 	"github.com/linkory/linkory-server/internal/database"
 	"github.com/linkory/linkory-server/internal/httpapi"
@@ -31,7 +33,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: httpapi.NewRouter(db), ReadHeaderTimeout: 10 * time.Second}
+	secret := []byte(cfg.JWTSecret)
+	if len(secret) < 32 {
+		log.Warn("LINKORY_JWT_SECRET missing or shorter than 32 bytes; using a random per-process secret (tokens invalid after restart)")
+		secret = make([]byte, 32)
+		_, _ = rand.Read(secret)
+	}
+	authSvc := auth.NewService(db, secret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+
+	srv := &http.Server{Addr: cfg.Addr, Handler: httpapi.NewRouter(db, authSvc), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Info("listening", "addr", cfg.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

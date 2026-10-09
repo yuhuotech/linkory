@@ -6,12 +6,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/linkory/linkory-server/internal/auth"
+	"github.com/linkory/linkory-server/internal/devices"
 )
 
 const Version = "0.1.0"
 
-func NewRouter(db *sql.DB) http.Handler {
+func NewRouter(db *sql.DB, authSvc *auth.Service) http.Handler {
 	mux := http.NewServeMux()
+	if authSvc != nil {
+		authSvc.Routes(mux)
+		(&devices.Handler{DB: db, Auth: authSvc}).Routes(mux)
+	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 	})
