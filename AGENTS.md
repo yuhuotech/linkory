@@ -31,7 +31,7 @@ make e2e                            # 双客户端对真实服务端（先 make 
 cd linkory-app && flutter test integration_test/app_test.dart -d macos --dart-define=LINKORY_E2E_URL=http://127.0.0.1:8090
 make app-macos-dmg                  # 打包 .dmg（未签名）
 
-# 局域网测试服务器（tools/deploy.env：ubuntu@172.17.32.251，服务端口 8090，免密 ssh）
+# 局域网测试服务器（配置在 tools/deploy.env，该文件被 git 忽略，样例见 tools/deploy.env.example；需要免密 ssh 与免密 sudo）
 make deploy                         # 构建 linux/amd64 服务端并部署重启（首次自动建库建账号、生成 JWT 密钥，systemd 服务 linkory-server）
 make deploy-status / deploy-logs
 tools/deploy_linux_node.sh build|start|stop|status|shot   # 在该服务器上构建并运行 Linux 版应用（Xvfb 虚拟显示，systemd 服务 linkory-node）

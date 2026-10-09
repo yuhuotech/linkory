@@ -7,6 +7,7 @@
 # 服务器没有登录桌面会话，所以应用跑在 Xvfb 虚拟显示上；首次运行会安装依赖并下载 Flutter SDK。
 set -euo pipefail
 cd "$(dirname "$0")/.."
+[ -f tools/deploy.env ] || { echo "缺少 tools/deploy.env：请复制 tools/deploy.env.example 并填写你的测试服务器" >&2; exit 1; }
 . tools/deploy.env
 HOST="${DEPLOY_HOST_OVERRIDE:-$DEPLOY_HOST}"
 SERVER="http://${HOST#*@}:$DEPLOY_PORT"

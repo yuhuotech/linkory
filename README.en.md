@@ -8,6 +8,7 @@
 
 [![Release](https://github.com/yuhuotech/linkory/actions/workflows/release.yml/badge.svg)](https://github.com/yuhuotech/linkory/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/yuhuotech/linkory?include_prereleases&label=release)](https://github.com/yuhuotech/linkory/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-informational)
 
 [Download](#download) · [Quick start](#quick-start) · [Docs](#documentation) · [简体中文](README.md)
@@ -112,7 +113,7 @@ Issues and pull requests are welcome. Read [`AGENTS.md`](AGENTS.md) and the [UI 
 
 ## License
 
-No open-source license has been chosen yet: all rights reserved until a `LICENSE` file is added.
+Released under the [MIT License](LICENSE).
 
 ## Acknowledgements
 

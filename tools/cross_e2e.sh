@@ -5,6 +5,7 @@
 #   LINKORY_X_EXPECT_LAN=0 tools/cross_e2e.sh   # 不断言走了局域网直连
 set -euo pipefail
 cd "$(dirname "$0")/.."
+[ -f tools/deploy.env ] || { echo "缺少 tools/deploy.env：请复制 tools/deploy.env.example 并填写你的测试服务器" >&2; exit 1; }
 . tools/deploy.env
 HOST="${DEPLOY_HOST_OVERRIDE:-$DEPLOY_HOST}"
 SERVER="http://${HOST#*@}:$DEPLOY_PORT"

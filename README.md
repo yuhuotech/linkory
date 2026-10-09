@@ -8,6 +8,7 @@
 
 [![Release](https://github.com/yuhuotech/linkory/actions/workflows/release.yml/badge.svg)](https://github.com/yuhuotech/linkory/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/yuhuotech/linkory?include_prereleases&label=release)](https://github.com/yuhuotech/linkory/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-informational)
 
 [下载](#下载与安装) · [快速开始](#快速开始) · [文档](#文档) · [English](README.en.md)
@@ -189,7 +190,7 @@ git tag v0.1.0 && git push origin v0.1.0     # v0.1.0-rc1 这样带连字符的�
 
 ## 许可证
 
-本项目**尚未指定开源许可证**，默认保留所有权利；在添加 `LICENSE` 文件之前，请不要假定可以自由使用、修改或分发。
+本项目以 [MIT 许可证](LICENSE) 开源。
 
 ## 致谢
 

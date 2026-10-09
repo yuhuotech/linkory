@@ -8,6 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
+[ -f tools/deploy.env ] || { echo "缺少 tools/deploy.env：请复制 tools/deploy.env.example 并填写你的测试服务器" >&2; exit 1; }
 . tools/deploy.env
 HOST="${DEPLOY_HOST_OVERRIDE:-$DEPLOY_HOST}"
 SERVICE=linkory-server

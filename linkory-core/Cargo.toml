@@ -3,7 +3,7 @@ name = "linkory-core"
 version = "0.1.0"
 edition = "2021"
 description = "Linkory core: same-network direct transfer (LNK1) reference implementation"
-license = "UNLICENSED"
+license = "MIT"
 
 [lib]
 name = "linkory_core"

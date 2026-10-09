@@ -23,6 +23,10 @@ func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	cfg := config.Load()
 
+	if cfg.MySQLDSN == "" {
+		log.Error("LINKORY_MYSQL_DSN is required (see linkory-server/.env.example)")
+		os.Exit(1)
+	}
 	db, err := database.Open(cfg.MySQLDSN)
 	if err != nil {
 		log.Error("open database", "err", err)

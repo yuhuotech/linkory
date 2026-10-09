@@ -6,9 +6,12 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck disable=SC1091
-. "$root/tools/deploy.env"
+# Personal LAN test-server settings (git-ignored); without them the client defaults to a local server.
+DEPLOY_HOST=""; DEPLOY_PORT=8090
+[ -f "$root/tools/deploy.env" ] && . "$root/tools/deploy.env"
 # Default server = the shared LAN test endpoint; override with LINKORY_SERVER=http://127.0.0.1:8090
-server="${LINKORY_SERVER:-http://${DEPLOY_HOST#*@}:$DEPLOY_PORT}"
+server="${LINKORY_SERVER:-${DEPLOY_HOST:+http://${DEPLOY_HOST#*@}:$DEPLOY_PORT}}"
+server="${server:-http://127.0.0.1:8090}"
 cd "$root/linkory-app"
 if [ $# -gt 0 ] && [ -n "$1" ]; then
   dev="$1"; shift
