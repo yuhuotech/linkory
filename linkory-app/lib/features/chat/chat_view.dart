@@ -141,9 +141,13 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     if (it.$2 is ChatMessage)
                       MessageBubble(msg: it.$2 as ChatMessage)
                     else
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: TransferCard(task: it.$2 as Transfer)),
+                      Align(
+                        // Like bubbles: files I send on the right, files I receive on the left.
+                        alignment: (it.$2 as Transfer).sender == widget.peerId ? Alignment.centerLeft : Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: TransferCard(task: it.$2 as Transfer)),
+                        ),
                       ),
                   ]);
                 },
