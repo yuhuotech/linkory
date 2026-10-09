@@ -33,3 +33,22 @@ device.type：`windows|macos|linux|android|ios`。登录失败 5 次/5 分钟（
 | S→C | `error` | `code, message` |
 
 消息状态（客户端侧）：sending → server_received → delivered | failed。同一设备仅保留一条最新连接。
+
+## 文件传输（阶段 04）
+状态机：`WAITING_ACCEPT → ACCEPTED → TRANSFERRING → VERIFYING → COMPLETED`；终态 `REJECTED/CANCELLED/FAILED/EXPIRED`（所有迁移服务端原子校验）。
+超时：WAITING_ACCEPT/ACCEPTED 5 分钟未动作 → EXPIRED；TRANSFERRING/VERIFYING 超 30 分钟 → FAILED。
+
+| 接口 | 角色 | 说明 |
+|---|---|---|
+| POST `/transfers` `{to_device_id,file_name,size,sha256}` | 发送端 | 创建任务；目标离线 → 409 `receiver_offline`（V1.0 不支持离线文件）；`sha256` 必填（小写 hex） |
+| GET `/transfers`、GET `/transfers/{id}` | 双方 | 传输中心 / 状态查询 |
+| POST `/transfers/{id}/accept` \| `/reject` | 接收端 | 确认 / 拒绝 |
+| POST `/transfers/{id}/cancel` | 双方 | 取消（中断中转） |
+| PUT `/transfers/{id}/data` | 发送端 | 原始字节流上传（不要 Base64）；服务端边转发边算 SHA-256，不落盘；不一致 → 任务 FAILED |
+| GET `/transfers/{id}/data` | 接收端 | 流式下载，头 `X-Linkory-SHA256`；一端先到最多等待 60s（超时 408，可重试） |
+| POST `/transfers/{id}/complete` | 接收端 | 本地 SHA-256 校验通过并保存后调用 → COMPLETED |
+| POST `/transfers/{id}/fail` `{reason}` | 接收端 | 本地失败（校验失败/磁盘不足）→ FAILED |
+
+**接收端必须在本地再次计算 SHA-256**，先写临时文件，校验一致后才改名为正式文件并调用 `complete`。
+WS 事件（发给双方）：`transfer.offer`（仅接收端）、`transfer.accept|reject|cancel|start|complete|fail|expired|failed`、`transfer.progress {id,bytes,size}`（约 500ms 一次）。
+V1.0 不支持断点续传：中断后需重新创建任务。

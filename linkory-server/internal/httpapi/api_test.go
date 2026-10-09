@@ -26,7 +26,7 @@ func setup(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tb := range []string{"messages", "conversations", "device_sessions", "devices", "users", "schema_migrations"} {
+	for _, tb := range []string{"transfer_tasks", "messages", "conversations", "device_sessions", "devices", "users", "schema_migrations"} {
 		db.Exec("DROP TABLE IF EXISTS " + tb)
 	}
 	if err := database.Migrate(db, migrations.FS); err != nil {
@@ -34,7 +34,7 @@ func setup(t *testing.T) http.Handler {
 	}
 	t.Cleanup(func() { db.Close() })
 	hub := messaging.NewHub(db, &messaging.Store{DB: db})
-	return NewRouter(db, auth.NewService(db, []byte("test-secret-test-secret-test-secret"), time.Minute, time.Hour), hub, 30*24*time.Hour)
+	return NewRouter(db, auth.NewService(db, []byte("test-secret-test-secret-test-secret"), time.Minute, time.Hour), hub, 30*24*time.Hour, 10<<20)
 }
 
 func call(h http.Handler, method, path, token string, body any) (int, map[string]any) {

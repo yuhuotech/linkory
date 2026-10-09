@@ -10,15 +10,19 @@ import (
 	"github.com/linkory/linkory-server/internal/auth"
 	"github.com/linkory/linkory-server/internal/devices"
 	"github.com/linkory/linkory-server/internal/messaging"
+	"github.com/linkory/linkory-server/internal/transfers"
 )
 
 const Version = "0.1.0"
 
-func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL time.Duration) http.Handler {
+func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL time.Duration, maxTransfer uint64) http.Handler {
 	mux := http.NewServeMux()
 	if authSvc != nil {
 		authSvc.Routes(mux)
 		(&devices.Handler{DB: db, Auth: authSvc, OnRemove: func(id string) { hub.Disconnect(id) }}).Routes(mux)
+		tr := &transfers.Handler{Svc: &transfers.Service{DB: db, MaxBytes: maxTransfer}, Auth: authSvc, Hub: hub}
+		tr.Routes(mux)
+		go tr.RunSweeper(context.Background())
 		(&messaging.Handler{Hub: hub, Auth: authSvc, OfflineTTL: offlineTTL}).Routes(mux)
 	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
