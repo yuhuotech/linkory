@@ -7,10 +7,10 @@ This file provides guidance to AI coding agents (Claude Code, Codex, etc.) when 
 ## 目录
 
 - `linkory-server/` Go 模块化单体（auth / devices / messaging / transfers / httpapi）
-- `linkory-app/` Flutter 客户端（目标五端；目前只在 widget 测试中验证过 UI）
+- `linkory-app/` Flutter 客户端（目标五端；已构建验证 macOS、iOS）
 - `linkory-protocol/PROTOCOL.md` REST + WebSocket 协议的唯一来源；每阶段先改协议，再改服务端，再改客户端
-- `linkory-core/` Rust 核心，阶段 06 前仅占位
-- `deploy/` Docker Compose（只含 server，使用宿主机 MySQL；未验证）
+- `linkory-core/` Rust 核心：局域网直连协议 `LNK1` 的参考实现（客户端目前用等价的 Dart 实现，两者有互操作测试）
+- `deploy/` Docker Compose（只含 server，使用宿主机/外部 MySQL；部署说明见 `docs/DEPLOYMENT.md`）
 
 ## 常用命令
 
@@ -20,9 +20,15 @@ make server-run      # 用 .env.local 启动服务端
 # 单个服务端测试
 cd linkory-server && set -a && . ./.env.local && set +a && go test ./internal/httpapi -run TestName -v
 
-cd linkory-app && flutter analyze && flutter test
+cd linkory-app && flutter analyze && flutter test        # = make app-test
 cd linkory-app && flutter test test/shell_test.dart --plain-name "name"
 cd linkory-app && flutter test --update-goldens   # 更新 test/goldens/*.png
+
+make core-test && make core-build   # Rust；互操作测试 test/lan_test.dart 需要先 core-build
+make e2e                            # 双客户端对真实服务端（先 make server-run）；LINKORY_E2E_BIG_MB=1024 加测大文件
+# 真实窗口集成测试（会启动 macOS 应用并把截图写到沙盒 tmp，路径见输出 "SHOTS ..."）
+cd linkory-app && flutter test integration_test/app_test.dart -d macos --dart-define=LINKORY_E2E_URL=http://127.0.0.1:8090
+make app-macos-dmg                  # 打包 .dmg（未签名）
 ```
 
 - Flutter 装在 `~/development/flutter`（PATH 在 `~/.zshrc`，使用 flutter-io.cn 镜像）。Xcode 已装，`flutter build macos --debug` 可通过；应用包名 `com.yuhuo.linkory`。
@@ -36,6 +42,7 @@ cd linkory-app && flutter test --update-goldens   # 更新 test/goldens/*.png
 - 认证：access JWT（HS256，15 分钟）+ 轮换 refresh token（库内只存哈希；复用旧 refresh 会撤销该设备全部会话）。设备在 `/auth/login` 中随公钥（Ed25519）自动注册。登录限流：同用户名+IP 5 分钟内 5 次失败。移除设备通过 `devices.OnRemove` 钩子立即使凭证失效并断开 WS。
 - 消息：WS 信封 `{v,type,event_id,request_id,ts,data}`；`client_msg_id` 为幂等键；ack 区分 `server_received` 与 `delivered`；上线时同步离线消息，未送达消息保留 30 天。在线状态目前是进程内存（单实例），接口按可换 Redis 设计。
 - 文件传输：状态机 `WAITING_ACCEPT → ACCEPTED → TRANSFERRING → VERIFYING → COMPLETED`，终态 `REJECTED/CANCELLED/FAILED/EXPIRED`，所有迁移用带前置状态条件的 UPDATE 保证合法。数据走 `PUT/GET /transfers/{id}/data`，服务端用 `io.Pipe` 内存中转、边转边算 SHA-256，不落盘；WS 只做信令。接收端必须重新校验 SHA-256，写 `.part` 后再 rename。
+- 局域网直连：任务创建时服务端生成 `lan_secret`（仅收发双方可见），接收端经 WS `lan.report` 上报监听端点（服务端只保留私网地址）；发送端在 `transfer.accept` 后先走 `LNK1` 直连（HMAC 互证 + ChaCha20-Poly1305 + 断点续传），失败回退 `PUT /data` 中转。直连完成由接收端 `POST /complete {"via":"lan"}`，握手成功时调 `/lan/start`。协议细节在 `PROTOCOL.md`。
 
 ## UI 规范（强制，完整版见 [`docs/UI_SPEC.md`](docs/UI_SPEC.md)）
 
@@ -52,6 +59,8 @@ cd linkory-app && flutter test --update-goldens   # 更新 test/goldens/*.png
 
 ## 客户端架构
 
+- `lib/core/lan/lan.dart`：直连协议的 Dart 实现（`lanSend` / `LanListener`）；`store.dart` 负责发送端先直连后回退、接收端放弃中转请求等编排。
+- `lib/core/desktop.dart`（窗口/托盘/通知/开机启动）与 `log.dart`、`secrets.dart`（钥匙串存凭据）；测试里 `notifyProvider`、`secretsProvider` 默认是空实现/内存实现。
 - `lib/core/`：`api.dart`（401 时自动 refresh）、`session.dart`（登录、设备身份与密钥、存储）、`realtime.dart`（WS、心跳、退避重连）、`store.dart`（`AppStore`：设备、在线状态、消息、传输上传/下载的聚合状态）。状态管理用 Riverpod 3（`Notifier`/`NotifierProvider`，没有 `StateProvider`）。
 - `lib/features/*`：按功能分页面；`shell/shell.dart` 是三栏布局（72px 图标栏 | 280px 列表栏 | 内容区，页头 52px）。
 - UI 风格移植自 cc-switch，规范见上文及 `docs/UI_SPEC.md`；token 在 `lib/theme/tokens.dart`，通用控件在 `lib/shared/widgets.dart`。

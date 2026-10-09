@@ -117,3 +117,20 @@
 品牌源文件为 `assets/brand/linkory-logo.svg`，运行 `python3 tools/gen_icons.py` 一次生成所有平台资源。登录页与图标栏统一使用 `BrandLogo`；Logo 保持 #F97316，不随深浅主题改变品牌色。
 
 macOS AppIcon 同时用于 Finder、Dock 与系统应用入口；菜单栏使用 18pt/2x 透明单色模板，由系统适配深浅色。Windows 使用多尺寸 ICO（应用、任务栏及托盘）；Linux 窗口及托盘使用彩色 PNG。iOS 使用不透明 RGB 图标，Android 提供传统及自适应图标，Web 提供 favicon 与安全区内的 maskable 图标。Linux 启动器图标仍需安装包注册 .desktop 文件（当前尚无 Linux 安装包）。
+
+## 9. 窄屏（移动端）布局
+
+窗口宽度 < 720（`narrowBreakpoint`，`isNarrow(context)`）时折叠为单栏，token 与控件不变：
+
+- 主区域一次只显示一个页面：会话 / 设备 / 设置显示列表栏内容（全宽），传输直接显示传输中心（页头下方是横向滚动的过滤按钮）。
+- 点击列表项用 `Navigator.push` 打开 `DetailPage`（会话、设备详情、设置项）；`PageHeader` 在可返回时自动显示 32px 返回按钮，左内边距缩为 8。
+- 底部导航 `_BottomNav`：`bgSidebar` 底 + 顶部 1px `border`；4 项（会话/设备/传输/设置）高 52，图标 20 + 11px 标签，选中色 `actionText`，传输项带橙色活动数角标；底部预留系统安全区。
+- 内容页顶部使用 `SafeArea`；不使用隐藏标题栏与窗口拖拽区（`DragArea` 仅桌面）。
+- 新页面必须同时在宽屏和窄屏下检查；窄屏用 `test/shell_test.dart` 的 narrow 用例与 `goldens/narrow_*.png` 覆盖。
+
+## 10. 其他共享控件
+
+- `LSwitch`：36×20 开关，开启为 `action`，关闭为 `controlOff`，圆点 16。
+- `LDialog` / `ConfirmDialog`：圆角 14、20 内边距、右对齐按钮（取消 neutral，确认 solid 或 destructive）。
+- `DragArea`：隐藏标题栏时的窗口拖拽区；**不要**给它加双击手势（祖先的双击识别器会让内部所有按钮延迟约 300ms）。
+- 传输卡片：左对齐为收到、右对齐为发出；走局域网直连时显示 `LBadge('局域网直连')`；传输中显示速度与耗时。

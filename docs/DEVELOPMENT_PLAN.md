@@ -60,14 +60,26 @@ linkory/
 
 ## 6. 进度（2026-10-09）
 
-- ✅ 阶段 01：monorepo、Go 骨架、迁移框架；Flutter 工程已创建（本机已安装 Flutter 3.47，使用 flutter-io.cn 镜像）。
-- ✅ 阶段 02：账号/设备注册/刷新轮换/设备管理（服务端，集成测试覆盖 AT-01/02/10/11）。
-- ✅ 阶段 03：WebSocket 在线状态、消息收发、回执、幂等、离线同步（服务端）。
-- ✅ 阶段 04（服务端）：传输任务状态机 + 流式中转 + SHA-256 校验。
-- 🚧 客户端（linkory-app）：设计系统（移植自 cc-switch v7 tokens）、三栏布局、登录、会话、设备管理、传输中心、设置；业务层已对接 REST/WS/文件传输。待做：与真实服务端的端到端联调（需 Xcode 以构建 macOS 应用）、托盘/通知、拖拽发送。
-- 环境：`flutter build macos --debug` 已通过；尚未与真实服务端做端到端联调。
+- ✅ 阶段 01：monorepo、Go 骨架、迁移框架、Docker Compose（已验证，见 `docs/DEPLOYMENT.md`）。
+- ✅ 阶段 02：账号/设备注册/刷新轮换/设备管理/修改密码（集成测试覆盖 AT-01/02/10/11）。
+- ✅ 阶段 03：WebSocket 在线状态、消息收发、回执、幂等、离线同步。
+- ✅ 阶段 04：传输任务状态机 + 流式中转 + SHA-256 校验；1 GB 文件经 Docker 部署的服务端传输通过（约 15 秒，服务端内存约 140 MB）。
+- ✅ 客户端联调：双客户端（独立会话）对真实服务端的端到端测试（`linkory-app/test/e2e_test.dart`）与真机集成测试（`integration_test/app_test.dart`，真实窗口渲染截图）通过。
+- ✅ 阶段 05 桌面体验：托盘与关闭到托盘、系统通知、拖拽/多文件发送、隐藏标题栏、开机启动（macOS/Windows/Linux 原生实现）、本地日志、主题设置、凭据存系统钥匙串（不可用时回退）、macOS dmg 打包脚本（`make app-macos-dmg`）。
+- ✅ 阶段 06 局域网直连（V1.1）：每任务密钥协商、`LNK1` 加密直连协议、断点续传、失败回退中转、传输方式设置（自动/仅局域网/仅中转）；Rust 参考实现 `linkory-core` 与 Dart 实现双向互操作测试通过。
+- 🚧 阶段 07：窄屏单栏布局 + 底部导航已完成（widget 测试），iOS 可构建（`flutter build ios --no-codesign`）；Android 因本机未装 SDK 未构建，Windows/Linux 未在对应系统构建。移动端系统分享入口、移动端通知尚未实现。
+
+### 未完成 / 已知限制
+
+- Android SDK 未安装，Android 未构建；Windows、Linux 桌面未在对应系统构建验证（仅 macOS、iOS 构建过）。
+- 局域网直连的加密在 Dart 中为软件实现（AOT 约 40 MB/s）；Rust 参考实现约 240 MB/s，待 FFI 接入后提速（见 `linkory-core/README.md`）。
+- 局域网发现采用「服务端交换候选地址」而非 mDNS：同一账号的设备经服务端互知局域网端点，简单可靠，但需要服务端可达；mDNS（无服务端时发现）留待 Rust 核心接入后实现。
+- 在线状态为进程内存，仅支持单实例；多实例需 Redis。
+- 文件夹传输（FILE-009）、账号恢复（AUTH-008 的恢复部分）、图片剪贴板、自动剪贴板同步未做（均为 P1/后续版本）。
+- 直连任务在服务端保持 TRANSFERRING 的上限为 30 分钟。
+- 移动端不承诺后台持续在线（系统限制），仅保证前台收发。
 
 ## 7. UI 设计规范
 
 整体视觉复刻 cc-switch（Tauri/React/Tailwind）：颜色、圆角（control 6 / panel 10 / dialog 14）、字号（11/12/13/14/15/16/18）、边框与阴影 token 见 `linkory-app/lib/theme/tokens.dart`，主题色橙 `#F97316`，支持深浅色。
-布局由 cc-switch 的两栏改为微信式三栏：图标导航栏（72px）｜列表栏（280px）｜内容区；内容区页头 52px，与 cc-switch 的 AppPageHeader 一致。
+布局由 cc-switch 的两栏改为微信式三栏：图标导航栏（72px）｜列表栏（280px）｜内容区；内容区页头 52px，与 cc-switch 的 AppPageHeader 一致。窗口宽度 < 720 时折叠为单栏 + 底部导航（移动端），详见 `docs/UI_SPEC.md`。
