@@ -50,7 +50,7 @@ linkory/
 ## 4. 环境现状与前置事项
 
 - 已有：Go 1.26、Docker、Rust/cargo、本机 MySQL 与 Redis、Flutter 3.47（已安装于 ~/development/flutter）。
-- **缺少完整 Xcode**：无法构建 macOS 应用，需要用户安装。
+- Xcode 已安装，macOS 应用可构建（包名 com.yuhuo.linkory）；Android SDK 未装。
 
 ## 5. 工程规范
 
@@ -65,7 +65,7 @@ linkory/
 - ✅ 阶段 03：WebSocket 在线状态、消息收发、回执、幂等、离线同步（服务端）。
 - ✅ 阶段 04（服务端）：传输任务状态机 + 流式中转 + SHA-256 校验。
 - 🚧 客户端（linkory-app）：设计系统（移植自 cc-switch v7 tokens）、三栏布局、登录、会话、设备管理、传输中心、设置；业务层已对接 REST/WS/文件传输。待做：与真实服务端的端到端联调（需 Xcode 以构建 macOS 应用）、托盘/通知、拖拽发送。
-- 环境限制：本机未装完整 Xcode，暂无法 `flutter run -d macos`；UI 通过 widget 测试截图（`linkory-app/test/goldens`）验证。
+- 环境：`flutter build macos --debug` 已通过；尚未与真实服务端做端到端联调。
 
 ## 7. UI 设计规范
 

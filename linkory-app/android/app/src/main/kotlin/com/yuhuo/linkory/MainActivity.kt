@@ -1,4 +1,4 @@
-package com.linkory.linkory_app
+package com.yuhuo.linkory
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -25,7 +25,7 @@ cd linkory-app && flutter test test/shell_test.dart --plain-name "name"
 cd linkory-app && flutter test --update-goldens   # 更新 test/goldens/*.png
 ```
 
-- Flutter 装在 `~/development/flutter`（PATH 在 `~/.zshrc`，使用 flutter-io.cn 镜像）。本机没有完整 Xcode，无法 `flutter run -d macos`。
+- Flutter 装在 `~/development/flutter`（PATH 在 `~/.zshrc`，使用 flutter-io.cn 镜像）。Xcode 已装，`flutter build macos --debug` 可通过；应用包名 `com.yuhuo.linkory`。
 - 服务端集成测试需要 `LINKORY_TEST_DSN`（指向本机 MySQL 的 `linkory_test` 库），未设置时测试会跳过；DSN 与密码只放在被 git 忽略的 `linkory-server/.env.local`，不要写入受版本控制的文件。
 - 本机 8080 被 nginx 占用，开发时服务端用 `LINKORY_ADDR=:8090`，客户端默认地址也是 8090。
 
