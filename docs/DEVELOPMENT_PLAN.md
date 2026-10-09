@@ -49,8 +49,8 @@ linkory/
 
 ## 4. 环境现状与前置事项
 
-- 已有：Go 1.26、Docker、Rust/cargo、本机 MySQL（需凭据）。
-- **缺少 Flutter SDK**：`linkory-app` 需先安装 Flutter 才能 `flutter create` 并运行；服务端开发不受阻。
+- 已有：Go 1.26、Docker、Rust/cargo、本机 MySQL 与 Redis、Flutter 3.47（已安装于 ~/development/flutter）。
+- **缺少完整 Xcode**：无法构建 macOS 应用，需要用户安装。
 
 ## 5. 工程规范
 

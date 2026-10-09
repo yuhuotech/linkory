@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:linkory_app/core/models.dart';
 import 'package:linkory_app/core/realtime.dart';
