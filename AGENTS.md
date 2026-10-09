@@ -56,3 +56,14 @@ cd linkory-app && flutter test --update-goldens   # 更新 test/goldens/*.png
 - `lib/features/*`：按功能分页面；`shell/shell.dart` 是三栏布局（72px 图标栏 | 280px 列表栏 | 内容区，页头 52px）。
 - UI 风格移植自 cc-switch，规范见上文及 `docs/UI_SPEC.md`；token 在 `lib/theme/tokens.dart`，通用控件在 `lib/shared/widgets.dart`。
 - 测试用 `test/support.dart` 的 `FakeStore` 与夹具；golden 截图里 emoji 显示成方块是测试字体缺失所致。
+
+## 提交规范
+
+提交信息使用 Conventional Commits 格式，**描述部分用中文**：`<type>(<scope>): <描述>`，scope 可省略。
+
+- type：`feat` 新功能 / `fix` 修复 / `docs` 文档 / `style` 仅格式 / `refactor` 重构 / `perf` 性能 / `test` 测试 / `build` 构建与依赖 / `ci` 持续集成 / `chore` 杂项 / `revert` 回滚
+- scope 建议取子目录或模块：`server`、`app`、`core`、`protocol`、`deploy`，例如 `feat(server): 添加文件传输状态机`
+- 描述简短（约 50 字以内）、动宾结构、不加句号，例如 `feat: 添加README.md文档`、`fix(app): 修复刷新令牌后 WebSocket 未重连`
+- 需要说明原因或影响时，空一行后写正文；不兼容变更在 type 后加 `!` 并在正文写 `BREAKING CHANGE:`
+- 一次提交只做一件事；不要把无关改动混在一起
+- 不要提交 `.env.local` 及任何凭据
