@@ -52,6 +52,14 @@ tools/cross_e2e.sh                  # 跨主机联调：本机 ↔ 服务器上�
 - 文件传输：状态机 `WAITING_ACCEPT → ACCEPTED → TRANSFERRING → VERIFYING → COMPLETED`，终态 `REJECTED/CANCELLED/FAILED/EXPIRED`，所有迁移用带前置状态条件的 UPDATE 保证合法。数据走 `PUT/GET /transfers/{id}/data`，服务端用 `io.Pipe` 内存中转、边转边算 SHA-256，不落盘；WS 只做信令。接收端必须重新校验 SHA-256，写 `.part` 后再 rename。
 - 局域网直连：任务创建时服务端生成 `lan_secret`（仅收发双方可见），接收端经 WS `lan.report` 上报监听端点（服务端只保留私网地址）；发送端在 `transfer.accept` 后先走 `LNK1` 直连（HMAC 互证 + ChaCha20-Poly1305 + 断点续传），失败回退 `PUT /data` 中转。直连完成由接收端 `POST /complete {"via":"lan"}`，握手成功时调 `/lan/start`。协议细节在 `PROTOCOL.md`。
 
+## 发布（GitHub Actions）
+
+推送 tag（`v0.1.0`；带 `-` 的如 `v0.1.0-rc1` 会标为预发布）触发 `.github/workflows/release.yml`：先跑 Go（真实 MySQL）/ Rust / Flutter 测试，通过后并行构建 Windows 安装程序（Inno Setup + 便携 zip）、macOS dmg（未签名）、Linux deb + tar.gz、Android apk（测试签名）、服务端多平台二进制，最后汇总 `SHA256SUMS.txt` 发布到 Release。也可在 Actions 页手动运行（`workflow_dispatch`，只产出构建产物，不发布）。CI 里 `CI=true` 时 golden 像素比较被放行（`test/flutter_test_config.dart`），像素检查只在本机做。iOS 需要 Apple 签名，暂无。
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
 ## UI 规范（强制，完整版见 [`docs/UI_SPEC.md`](docs/UI_SPEC.md)）
 
 视觉完整复刻 cc-switch（v7 设计系统），唯一差异是布局改为微信式三栏。**写任何 Flutter UI 前先读 `docs/UI_SPEC.md`。**

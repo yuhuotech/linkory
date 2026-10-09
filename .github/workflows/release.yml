@@ -1,0 +1,272 @@
+name: Release
+
+# Push a tag like v0.1.0 (or v0.1.0-rc1 for a pre-release): run the tests, build every platform,
+# and publish the installers to a GitHub Release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build without publishing (e.g. 0.1.0-test); packages are kept as workflow artifacts'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.7'
+  # Tag v1.2.3 -> 1.2.3 ; manual run -> the input
+  VERSION: ${{ github.event_name == 'push' && github.ref_name || format('v{0}', inputs.version) }}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ------------------------------------------------------------------ tests
+  test:
+    name: Tests (Go · Dart · Rust)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-pass
+          MYSQL_DATABASE: linkory_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-root-pass"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: linkory-server/go.mod
+          cache-dependency-path: linkory-server/go.sum
+      - name: Go vet + tests (real MySQL)
+        working-directory: linkory-server
+        env:
+          LINKORY_TEST_DSN: root:ci-root-pass@tcp(127.0.0.1:3306)/linkory_test?parseTime=true&charset=utf8mb4&loc=UTC
+        run: |
+          go vet ./...
+          go test ./...
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: linkory-core
+      - name: Rust tests + build the interop peer
+        working-directory: linkory-core
+        run: |
+          cargo test
+          cargo build --release
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Linux desktop build dependencies (plugins need GTK etc. to analyse/compile)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libayatana-appindicator3-dev libnotify-dev
+      - name: Flutter analyze + tests (includes the Dart<->Rust LNK1 interop)
+        working-directory: linkory-app
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+  # ------------------------------------------------------------------ server binaries
+  server:
+    name: Server binaries
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: linkory-server/go.mod
+          cache-dependency-path: linkory-server/go.sum
+      - name: Cross-compile
+        working-directory: linkory-server
+        run: |
+          V="${VERSION#v}"
+          mkdir -p ../dist
+          for target in linux/amd64 linux/arm64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"; arch="${target#*/}"
+            ext=""; [ "$os" = windows ] && ext=".exe"
+            dir="linkory-server-$V-$os-$arch"
+            mkdir -p "$dir"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X github.com/linkory/linkory-server/internal/httpapi.Version=$V" \
+              -o "$dir/linkory-server$ext" ./cmd/linkory-server
+            cp ../docs/DEPLOYMENT.md "$dir/DEPLOYMENT.md"
+            cp .env.example "$dir/.env.example"
+            if [ "$os" = windows ]; then (cd "$dir" && zip -qr "../../dist/$dir.zip" .); else tar -C "$dir" -czf "../dist/$dir.tar.gz" .; fi
+          done
+          ls -la ../dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-server
+          path: dist/*
+
+  # ------------------------------------------------------------------ Windows
+  windows:
+    name: Windows installer
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build
+        working-directory: linkory-app
+        shell: bash
+        run: |
+          V="${VERSION#v}"
+          flutter pub get
+          # Platform version resources want plain x.y.z: strip any -rc/-beta suffix for the app version only.
+          flutter build windows --release --build-name="${V%%-*}"
+      - name: Bundle the Visual C++ runtime next to the app (so it starts on a clean PC)
+        shell: pwsh
+        run: |
+          $dst = "linkory-app/build/windows/x64/runner/Release"
+          foreach ($f in 'msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll','msvcp140_1.dll','msvcp140_2.dll','concrt140.dll') {
+            $p = Join-Path $env:WINDIR "System32\$f"
+            if (Test-Path $p) { Copy-Item $p $dst -Force }
+          }
+      - name: Installer (Inno Setup) + portable zip
+        shell: pwsh
+        run: |
+          $v = "${{ env.VERSION }}".TrimStart('v')
+          choco install innosetup -y --no-progress
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" "installer\windows\linkory.iss"
+          Compress-Archive -Path "linkory-app\build\windows\x64\runner\Release\*" -DestinationPath "dist\Linkory-$v-windows-x64.zip"
+          Get-ChildItem dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-windows
+          path: dist/*
+
+  # ------------------------------------------------------------------ macOS
+  macos:
+    name: macOS dmg
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build + dmg (unsigned)
+        run: |
+          VERSION="${VERSION#v}" tools/package_macos.sh
+          mkdir -p dist
+          cp linkory-app/build/Linkory-*-macos.dmg dist/
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-macos
+          path: dist/*
+
+  # ------------------------------------------------------------------ Linux
+  linux:
+    name: Linux deb + tar.gz
+    needs: test
+    runs-on: ubuntu-22.04   # oldest supported runner: keeps the glibc requirement low
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libayatana-appindicator3-dev libnotify-dev
+      - name: Build
+        working-directory: linkory-app
+        run: |
+          flutter pub get
+          V="${VERSION#v}"
+          flutter build linux --release --build-name="${V%%-*}"
+      - name: Package
+        run: |
+          V="${VERSION#v}"
+          bundle=linkory-app/build/linux/x64/release/bundle
+          mkdir -p dist
+          tar -C "$bundle" -czf "dist/Linkory-$V-linux-x64.tar.gz" .
+          installer/linux/build-deb.sh "$bundle" "$V" dist amd64
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-linux
+          path: dist/*
+
+  # ------------------------------------------------------------------ Android
+  android:
+    name: Android apk
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build apk (debug-signed unless a release keystore is configured)
+        working-directory: linkory-app
+        run: |
+          V="${VERSION#v}"
+          flutter pub get
+          flutter build apk --release --build-name="${V%%-*}"
+          mkdir -p ../dist
+          cp build/app/outputs/flutter-apk/app-release.apk "../dist/Linkory-$V-android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-android
+          path: dist/*
+
+  # ------------------------------------------------------------------ publish
+  release:
+    name: Publish GitHub Release
+    needs: [server, windows, macos, linux, android]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          ls -la
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 连信 Linkory ${{ github.ref_name }}
+          body_path: .github/release-body.md
+          generate_release_notes: true
+          # v1.2.3-rc1 / v1.2.3-beta -> pre-release
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: dist/*

@@ -15,7 +15,8 @@ import (
 	"github.com/linkory/linkory-server/internal/transfers"
 )
 
-const Version = "0.1.0"
+// Version is overridden at release build time: -ldflags "-X .../httpapi.Version=1.2.3".
+var Version = "0.1.0"
 
 // MetricsToken enables GET /metrics (Prometheus text format) for callers presenting it as a bearer
 // token. Empty = endpoint disabled.

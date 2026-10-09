@@ -1,11 +1,12 @@
 FROM golang:1.26.5-bookworm AS build
 ARG GOPROXY=https://proxy.golang.org,direct
+ARG VERSION=dev
 ENV GOPROXY=${GOPROXY}
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/linkory-server ./cmd/linkory-server
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/linkory/linkory-server/internal/httpapi.Version=${VERSION}" -o /out/linkory-server ./cmd/linkory-server
 
 FROM alpine:3.22
 RUN adduser -D -u 10001 linkory
