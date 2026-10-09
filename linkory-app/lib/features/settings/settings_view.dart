@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/api.dart';
 import '../../core/desktop.dart';
 import '../../core/log.dart';
 import '../../core/session.dart';
@@ -33,6 +34,15 @@ extension SettingsTabX on SettingsTab {
 class SettingsView extends ConsumerWidget {
   const SettingsView({super.key});
 
+  Future<void> _changePassword(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(context: context, builder: (_) => const _PasswordDialog());
+    if (ok == true && context.mounted) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(content: Text('密码已修改，其他设备已退出登录'), behavior: SnackBarBehavior.floating, width: 360));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.c;
@@ -57,11 +67,15 @@ class SettingsView extends ConsumerWidget {
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerLeft,
-            child: LButton(
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              LButton(label: '修改密码', icon: LucideIcons.keyRound, onPressed: () => _changePassword(context, ref)),
+              const SizedBox(width: 8),
+              LButton(
                 label: '退出登录', icon: LucideIcons.logOut, onPressed: () async {
                   ref.read(storeProvider.notifier).stop();
                   await ref.read(sessionProvider.notifier).logout();
                 }),
+            ]),
           ),
         ],
       SettingsTab.general => [
@@ -173,4 +187,54 @@ class _ToggleState extends State<_Toggle> {
         const SizedBox(width: 10),
         Text(widget.label, style: Type.body.copyWith(color: context.c.text2)),
       ]);
+}
+
+class _PasswordDialog extends ConsumerStatefulWidget {
+  const _PasswordDialog();
+  @override
+  ConsumerState<_PasswordDialog> createState() => _PasswordDialogState();
+}
+
+class _PasswordDialogState extends ConsumerState<_PasswordDialog> {
+  final _old = TextEditingController(), _new = TextEditingController(), _again = TextEditingController();
+  String? _err;
+  bool _busy = false;
+
+  Future<void> _submit() async {
+    if (_new.text != _again.text) return setState(() => _err = '两次输入的新密码不一致');
+    if (_new.text.length < 8) return setState(() => _err = '新密码至少 8 位');
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
+    try {
+      await ref.read(sessionProvider.notifier).changePassword(_old.text, _new.text);
+      if (mounted) Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      setState(() {
+        _busy = false;
+        _err = e.code == 'invalid_credentials' ? '当前密码不正确' : e.message;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return LDialog(
+      title: '修改密码',
+      confirm: _busy ? '提交中…' : '修改',
+      onConfirm: _busy ? () {} : _submit,
+      body: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        LTextField(controller: _old, hint: '当前密码', obscure: true, autofocus: true),
+        const SizedBox(height: 8),
+        LTextField(controller: _new, hint: '新密码（至少 8 位）', obscure: true),
+        const SizedBox(height: 8),
+        LTextField(controller: _again, hint: '再次输入新密码', obscure: true, onSubmitted: (_) => _submit()),
+        const SizedBox(height: 8),
+        Text('修改后，本账号的其他设备会退出登录。', style: Type.caption.copyWith(color: c.text3)),
+        if (_err != null) ...[const SizedBox(height: 6), Text(_err!, style: Type.caption.copyWith(color: c.dangerText))],
+      ]),
+    );
+  }
 }

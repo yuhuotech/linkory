@@ -28,6 +28,10 @@ type Service struct {
 	AccessTTL  time.Duration
 	RefreshTTL time.Duration
 
+	// OnRevoke is called with the devices whose sessions were just revoked (e.g. after a password
+	// change) so live connections can be dropped.
+	OnRevoke func(deviceIDs []string)
+
 	mu       sync.Mutex
 	failures map[string][]time.Time
 }
@@ -201,6 +205,58 @@ func (s *Service) Refresh(ctx context.Context, refresh string) (*Tokens, error) 
 		return nil, err
 	}
 	return s.tokens(uid, did, sid, newRefresh)
+}
+
+// ChangePassword verifies the old password, stores the new hash and signs out every other device
+// of the account (PRD AUTH-008); the calling device keeps its session.
+func (s *Service) ChangePassword(ctx context.Context, p Principal, oldPw, newPw string) error {
+	key := fmt.Sprintf("pw|%d", p.UserID)
+	if s.tooManyFailures(key) {
+		return apiutil.Err(429, "too_many_attempts", "too many failed attempts, retry later")
+	}
+	if len(newPw) < 8 || len(newPw) > 128 {
+		return apiutil.Err(400, "invalid_password", "password must be 8-128 characters")
+	}
+	var hash string
+	if err := s.DB.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id=?`, p.UserID).Scan(&hash); err != nil {
+		return err
+	}
+	if !verifyPassword(oldPw, hash) {
+		s.recordFailure(key)
+		return apiutil.Err(401, "invalid_credentials", "current password is wrong")
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET password_hash=? WHERE id=?`, hashPassword(newPw), p.UserID); err != nil {
+		return err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT d.id FROM devices d JOIN device_sessions s ON s.device_id=d.id
+		WHERE d.user_id=? AND d.id<>? AND s.revoked_at IS NULL`, p.UserID, p.DeviceID)
+	if err != nil {
+		return err
+	}
+	var others []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			others = append(others, id)
+		}
+	}
+	rows.Close()
+	if _, err := tx.ExecContext(ctx, `UPDATE device_sessions s JOIN devices d ON d.id=s.device_id
+		SET s.revoked_at=UTC_TIMESTAMP(3) WHERE d.user_id=? AND d.id<>? AND s.revoked_at IS NULL`, p.UserID, p.DeviceID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if s.OnRevoke != nil && len(others) > 0 {
+		s.OnRevoke(others)
+	}
+	return nil
 }
 
 func (s *Service) Logout(ctx context.Context, p Principal) error {

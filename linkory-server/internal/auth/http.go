@@ -80,6 +80,21 @@ func (s *Service) Routes(mux *http.ServeMux) {
 		}
 		apiutil.JSON(w, 200, t)
 	})
+	mux.HandleFunc("POST /api/v1/auth/password", s.Middleware(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Old string `json:"old_password"`
+			New string `json:"new_password"`
+		}
+		if err := apiutil.Decode(r, &req); err != nil {
+			apiutil.Fail(w, err)
+			return
+		}
+		if err := s.ChangePassword(r.Context(), *PrincipalFrom(r.Context()), req.Old, req.New); err != nil {
+			apiutil.Fail(w, err)
+			return
+		}
+		w.WriteHeader(204)
+	}))
 	mux.HandleFunc("POST /api/v1/auth/logout", s.Middleware(func(w http.ResponseWriter, r *http.Request) {
 		if err := s.Logout(r.Context(), *PrincipalFrom(r.Context())); err != nil {
 			apiutil.Fail(w, err)

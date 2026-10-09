@@ -169,3 +169,36 @@ func TestAccountsAndDevices(t *testing.T) {
 		t.Fatalf("throttle: %d", code)
 	}
 }
+
+// AUTH-008: changing the password verifies the old one and signs out the account's other devices.
+func TestChangePassword(t *testing.T) {
+	h := setup(t)
+	call(h, "POST", "/api/v1/auth/register", "", map[string]any{"username": "pwuser", "password": "password123"})
+	a, b := login(t, h, "pwuser", "mac"), login(t, h, "pwuser", "win")
+	aTok, bTok := a["access_token"].(string), b["access_token"].(string)
+	body := func(o, n string) map[string]any { return map[string]any{"old_password": o, "new_password": n} }
+
+	if code, _ := call(h, "POST", "/api/v1/auth/password", aTok, body("wrong-password", "brand-new-pass-2")); code != 401 {
+		t.Fatalf("wrong old password: %d", code)
+	}
+	if code, _ := call(h, "POST", "/api/v1/auth/password", aTok, body("password123", "short")); code != 400 {
+		t.Fatalf("weak new password: %d", code)
+	}
+	if code, _ := call(h, "POST", "/api/v1/auth/password", aTok, body("password123", "brand-new-pass-2")); code != 204 && code != 200 {
+		t.Fatalf("change: %d", code)
+	}
+	// The calling device keeps working; the other device is signed out.
+	if code, _ := call(h, "GET", "/api/v1/devices", aTok, nil); code != 200 {
+		t.Fatalf("caller after change: %d", code)
+	}
+	if code, _ := call(h, "GET", "/api/v1/devices", bTok, nil); code != 401 {
+		t.Fatalf("other device after change: %d", code)
+	}
+	// Old password no longer logs in; the new one does.
+	if code, _ := call(h, "POST", "/api/v1/auth/login", "", map[string]any{"username": "pwuser", "password": "password123", "device": dev("x")}); code != 401 {
+		t.Fatalf("old password login: %d", code)
+	}
+	if code, _ := call(h, "POST", "/api/v1/auth/login", "", map[string]any{"username": "pwuser", "password": "brand-new-pass-2", "device": dev("y")}); code != 200 {
+		t.Fatalf("new password login: %d", code)
+	}
+}

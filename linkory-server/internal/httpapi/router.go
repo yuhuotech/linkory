@@ -18,6 +18,11 @@ const Version = "0.1.0"
 func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL time.Duration, maxTransfer uint64) http.Handler {
 	mux := http.NewServeMux()
 	if authSvc != nil {
+		authSvc.OnRevoke = func(ids []string) {
+			for _, id := range ids {
+				hub.Disconnect(id)
+			}
+		}
 		authSvc.Routes(mux)
 		(&devices.Handler{DB: db, Auth: authSvc, OnRemove: func(id string) { hub.Disconnect(id) }}).Routes(mux)
 		tr := &transfers.Handler{Svc: &transfers.Service{DB: db, MaxBytes: maxTransfer}, Auth: authSvc, Hub: hub}

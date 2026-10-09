@@ -31,6 +31,24 @@ Future<ProviderContainer> client(String name, Directory saveDir) async {
 
 void main() {
   bigTest();
+  test('password change keeps this device, signs out the other', () async {
+    final user = 'pw${Random().nextInt(1 << 30)}';
+    final tmp = await Directory.systemTemp.createTemp('linkory_pw');
+    addTearDown(() => tmp.delete(recursive: true));
+    final a = await client('a', Directory('${tmp.path}/a'));
+    final b = await client('b', Directory('${tmp.path}/b'));
+    await a.read(sessionProvider.notifier).register(url!, user, 'correct-horse-9');
+    await a.read(sessionProvider.notifier).login(url!, user, 'correct-horse-9');
+    await b.read(sessionProvider.notifier).login(url!, user, 'correct-horse-9');
+    await a.read(storeProvider.notifier).start();
+    await b.read(storeProvider.notifier).start();
+    await until(() => a.read(storeProvider).peers.length == 1, what: 'devices');
+    await a.read(sessionProvider.notifier).changePassword('correct-horse-9', 'another-pass-77');
+    await until(() => b.read(sessionProvider).status == AuthStatus.loggedOut, what: 'b signed out', seconds: 20);
+    expect(a.read(sessionProvider).status, AuthStatus.loggedIn);
+    await a.read(storeProvider.notifier).loadDevices(); // still authorised
+  }, skip: url == null ? 'set LINKORY_E2E_URL' : false, timeout: const Timeout(Duration(seconds: 60)));
+
   test('two devices: login, presence, messaging, file transfer', () async {
     final user = 'e2e${Random().nextInt(1 << 30)}';
     const pw = 'correct-horse-9';

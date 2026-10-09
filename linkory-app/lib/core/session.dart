@@ -97,6 +97,10 @@ class SessionController extends Notifier<SessionState> {
         status: AuthStatus.loggedIn, serverUrl: api.baseUrl, username: username, deviceId: j['device_id']);
   }
 
+  /// Other devices are signed out by the server; this one keeps its session.
+  Future<void> changePassword(String oldPw, String newPw) =>
+      ref.read(apiProvider).request('POST', '/auth/password', body: {'old_password': oldPw, 'new_password': newPw});
+
   Future<void> logout() async {
     final api = ref.read(apiProvider);
     try {
