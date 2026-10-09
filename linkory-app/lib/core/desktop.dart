@@ -12,7 +12,11 @@ import '../shared/close_dialog.dart';
 
 /// Windows and Linux draw their own minimise/maximise/close buttons (the title bar is hidden for a
 /// cleaner look); macOS keeps its native traffic lights.
-bool get hasCustomWindowControls => isDesktop && !Platform.isMacOS;
+bool get hasCustomWindowControls => windowShellActive && !Platform.isMacOS;
+
+/// True only in the real app, after [DesktopShell.init] set up the window plugin. Widget tests run on
+/// desktop hosts too (Linux CI!) where the plugin does not exist, so UI code must not assume it.
+bool get windowShellActive => isDesktop && DesktopShell.instance != null;
 
 bool get isDesktop =>
     !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);

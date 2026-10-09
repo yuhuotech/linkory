@@ -489,7 +489,7 @@ class _DragAreaState extends State<DragArea> {
 
   @override
   Widget build(BuildContext context) {
-    if (!isDesktop) return widget.child;
+    if (!windowShellActive) return widget.child;
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: _down,
