@@ -98,7 +98,7 @@ def main():
     base.mkdir(parents=True, exist_ok=True)
     for size in (16, 32, 64, 128, 256, 512, 1024):
         write(base / f'app_{size}.png', size)
-    # macOS template at 18pt with a 2x variant (tray_manager loads @2x).
+    # macOS template at 18pt with a 2x variant (DesktopShell selects @2x explicitly).
     write(base / 'tray.png', 18, 'tray')
     write(base / 'tray@2x.png', 36, 'tray')
     ico(base / 'app.ico')

@@ -7,3 +7,9 @@ up:
 	docker compose -f deploy/docker-compose.yml up -d --build
 down:
 	docker compose -f deploy/docker-compose.yml down
+
+.PHONY: app-test app-macos-dmg
+app-test:
+	cd linkory-app && flutter analyze && flutter test
+app-macos-dmg:
+	tools/package_macos.sh

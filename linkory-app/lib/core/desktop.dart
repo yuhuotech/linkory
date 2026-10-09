@@ -59,7 +59,7 @@ class DesktopShell with TrayListener, WindowListener {
       Platform.isWindows
           ? 'assets/icons/app.ico'
           : Platform.isMacOS
-              ? 'assets/icons/tray.png'
+              ? 'assets/icons/tray@2x.png'
               : 'assets/icons/app_32.png',
       isTemplate: Platform.isMacOS, // adapts to light/dark menu bar
     );
