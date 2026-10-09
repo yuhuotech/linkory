@@ -12,7 +12,9 @@ import 'api.dart';
 import 'models.dart';
 import 'secrets.dart';
 
-const defaultServer = 'http://127.0.0.1:8090';
+/// Pre-filled server address. `make app-run` points it at the shared LAN test server via
+/// --dart-define=LINKORY_DEFAULT_SERVER; release builds leave it to the user.
+const defaultServer = String.fromEnvironment('LINKORY_DEFAULT_SERVER', defaultValue: 'http://127.0.0.1:8090');
 
 enum AuthStatus { loading, loggedOut, loggedIn }
 
