@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/linkory/linkory-server/internal/apiutil"
@@ -43,6 +44,9 @@ type relay struct {
 	senderClaimed   bool
 	receiverClaimed bool
 }
+
+// RelayedBytes counts file bytes that passed through the relay since start (for /metrics).
+var RelayedBytes atomic.Uint64
 
 var errCancelled = errors.New("transfer cancelled")
 
@@ -289,6 +293,7 @@ func (c *countWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.h.Write(p[:n])
 	c.n += uint64(n)
+	RelayedBytes.Add(uint64(n))
 	if time.Since(c.last) > 500*time.Millisecond {
 		c.last = time.Now()
 		c.progress(c.n)

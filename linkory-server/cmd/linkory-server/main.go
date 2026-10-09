@@ -40,6 +40,7 @@ func main() {
 		secret = make([]byte, 32)
 		_, _ = rand.Read(secret)
 	}
+	httpapi.MetricsToken = os.Getenv("LINKORY_METRICS_TOKEN")
 	authSvc := auth.NewService(db, secret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 
 	store := &messaging.Store{DB: db}

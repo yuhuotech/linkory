@@ -202,3 +202,24 @@ func TestChangePassword(t *testing.T) {
 		t.Fatalf("new password login: %d", code)
 	}
 }
+
+func TestMetrics(t *testing.T) {
+	MetricsToken = "t0ken"
+	t.Cleanup(func() { MetricsToken = "" })
+	h := setup(t)
+	get := func(auth string) int {
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if auth == "Bearer t0ken" && !bytes.Contains(rec.Body.Bytes(), []byte("linkory_online_devices 0")) {
+			t.Fatalf("metrics body: %s", rec.Body.String())
+		}
+		return rec.Code
+	}
+	if get("") != 401 || get("Bearer nope") != 401 || get("Bearer t0ken") != 200 {
+		t.Fatal("metrics auth")
+	}
+}

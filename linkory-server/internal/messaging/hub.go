@@ -144,6 +144,13 @@ func (h *Hub) broadcastPresence(userID uint64, deviceID, typ string) {
 	}
 }
 
+// OnlineCount is the number of devices with a live connection.
+func (h *Hub) OnlineCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}
+
 // OnlineDevices lists the account's devices that currently have a live connection.
 func (h *Hub) OnlineDevices(userID uint64, except string) []string {
 	h.mu.RLock()

@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../linkory-app"
 flutter build macos --release
-APP=build/macos/Build/Products/Release/linkory_app.app
+APP="build/macos/Build/Products/Release/连信 Linkory.app"
 VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
 OUT=build/Linkory-${VERSION}-macos.dmg
 STAGE=$(mktemp -d)
