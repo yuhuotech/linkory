@@ -30,6 +30,7 @@ device.type：`windows|macos|linux|android|ios`。登录失败 5 次/5 分钟（
 | S→C | `message.delivered` | `message_id, client_msg_id, delivered_at`（发给发送端） |
 | S→C | `presence.snapshot` | `online_device_ids[]`（连接建立时） |
 | S→C | `device.online` / `device.offline` | `device_id` |
+| C→S | `lan.report` | `addrs[]`(本机局域网 IPv4), `port`：声明本机接收直连的监听端点；服务端只保留私网/回环/链路本地地址（≤8 个），断线即失效 |
 | S→C | `error` | `code, message` |
 
 消息状态（客户端侧）：sending → server_received → delivered | failed。同一设备仅保留一条最新连接。
@@ -51,4 +52,28 @@ device.type：`windows|macos|linux|android|ios`。登录失败 5 次/5 分钟（
 
 **接收端必须在本地再次计算 SHA-256**，先写临时文件，校验一致后才改名为正式文件并调用 `complete`。
 WS 事件（发给双方）：`transfer.offer`（仅接收端）、`transfer.accept|reject|cancel|start|complete|fail|expired|failed`、`transfer.progress {id,bytes,size}`（约 500ms 一次）。
-V1.0 不支持断点续传：中断后需重新创建任务。
+中转路径不支持断点续传：中断后需重新创建任务（直连路径支持，见下）。
+
+## 局域网直连（V1.1，阶段 06）
+同一网络内设备可不经服务端中转直接传输；服务端只做协商与状态记录，**文件内容不经过服务端**。
+
+**协商**
+- 任务 JSON 增加：`mode`（`relay`\|`lan`，实际承载路径）、`lan_secret`（任务创建时服务端生成的 32 字节随机密钥，hex，只下发给收发双方）、`receiver_lan {addrs[],port}`（接收端最近一次 `lan.report`，仅 WAITING_ACCEPT/ACCEPTED 阶段附带）。
+- 接收端 `accept` 后：发送端收到 `transfer.accept`（含 `receiver_lan`）→ 尝试直连；失败则回退 `PUT /data` 中转。接收端 `accept` 后同时发起 `GET /data`，若发送端直连成功则放弃该请求（服务端在发送端未上传时不改变状态）。
+- `POST /transfers/{id}/lan/start`（接收端）：直连握手通过后调用，ACCEPTED → TRANSFERRING、`mode=lan`，避免任务被超时清理。
+- `POST /transfers/{id}/complete` 带 `{"via":"lan"}`（接收端）：本地校验 SHA-256 与大小通过后，允许从 ACCEPTED/TRANSFERRING 直接 → COMPLETED。中转路径仍须经 VERIFYING。
+- 传输方式设置：自动（先直连后中转）/ 仅局域网 / 仅公网中转（客户端本地设置）。
+
+**直连线路协议 `LNK1`（TCP）**
+```
+S→R  "LNK1" | task_id(16B) | nonceS(16B)
+R→S  nonceR(16B) | offset(u64 BE) | HMAC-SHA256(secret, "R"|task_id|nonceS|nonceR|offset)
+S→R  HMAC-SHA256(secret, "S"|task_id|nonceS|nonceR|offset)
+之后：重复帧 [len u32 BE][ChaCha20-Poly1305(type(1B)|payload)]，type 0=数据(≤256KiB) 1=结束
+密钥 = HKDF-SHA256(secret, salt=nonceS|nonceR, info="linkory-lan-v1")，nonce = 4B 零 + u64 帧计数
+R→S  1 字节：1=大小与 SHA-256 校验通过，0=失败
+```
+- 双向互证：只有持有服务端下发 `lan_secret` 的设备才能通过握手（身份验证）；握手前不传任何文件数据。
+- `offset` 为接收端已持有的字节数，发送端从该位置继续（断点续传，同一任务内重连最多 3 次，之后回退中转）。接收端用 `.<id>.lan.part` 暂存，校验通过后才改名。
+- 直连成功后双方进度由两端本地显示，不经服务端 `transfer.progress`。
+- 限制：直连任务保持 TRANSFERRING 的上限仍是 30 分钟（服务端清理阈值）。
