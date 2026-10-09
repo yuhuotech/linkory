@@ -80,8 +80,17 @@ class DesktopShell with TrayListener, WindowListener {
   }
 
   Future<void> showWindow() async {
+    // Bring the Dock / taskbar entry back first (macOS: regular activation policy again).
+    await windowManager.setSkipTaskbar(false);
     await windowManager.show();
     await windowManager.focus();
+  }
+
+  /// Close-to-tray: the process keeps running (tray icon, connection, notifications) but the app
+  /// disappears from the Dock / taskbar, so it reads as "quit" until reopened from the tray.
+  Future<void> hideToTray() async {
+    await windowManager.hide();
+    await windowManager.setSkipTaskbar(true);
   }
 
   /// Notify only when the user is not already looking at the app.
@@ -137,7 +146,7 @@ class DesktopShell with TrayListener, WindowListener {
   @override
   void onWindowClose() async {
     if (closeToTray) {
-      await windowManager.hide();
+      await hideToTray();
     } else {
       await quit();
     }

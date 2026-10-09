@@ -160,4 +160,5 @@ macOS AppIcon 同时用于 Finder、Dock 与系统应用入口；菜单栏使用
 - Linux 无边框窗口没有系统缩放边框：在 `MaterialApp.builder` 里包 `DragToResizeArea` 提供四边四角的缩放热区。
 - Linux 的「关闭窗口时最小化到托盘」默认关闭（GNOME 默认不显示托盘图标，窗口藏起来就找不回了）；macOS/Windows 默认开启，可在 设置 → 通用 修改。
 - 新页面必须使用 `PageHeader`，不要自己拼页头，否则会缺少窗口按钮和拖动区。
+- 「关闭到托盘」= 窗口隐藏 + 从 Dock / 任务栏移除（`hideToTray`：`hide` 后 `setSkipTaskbar(true)`，macOS 上应用切到 accessory 模式），进程、连接和托盘图标继续运行；从托盘图标/菜单、通知点击恢复（`showWindow` 先恢复 Dock 条目再显示）。Cmd+Q / 托盘「退出」才真正退出。Linux 若开启此项，需要桌面环境显示托盘（GNOME 需 AppIndicator 扩展），否则窗口无法找回。
 
