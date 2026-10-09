@@ -57,3 +57,17 @@ linkory/
 - 每阶段先更新 `linkory-protocol`，再实现服务端，再实现客户端。
 - Go：`go vet` + `go test ./...`；Flutter：`flutter analyze` + `flutter test`；Rust：`cargo test`。
 - 每个阶段结束打 tag 并保持主干可运行。
+
+## 6. 进度（2026-10-09）
+
+- ✅ 阶段 01：monorepo、Go 骨架、迁移框架；Flutter 工程已创建（本机已安装 Flutter 3.47，使用 flutter-io.cn 镜像）。
+- ✅ 阶段 02：账号/设备注册/刷新轮换/设备管理（服务端，集成测试覆盖 AT-01/02/10/11）。
+- ✅ 阶段 03：WebSocket 在线状态、消息收发、回执、幂等、离线同步（服务端）。
+- ✅ 阶段 04（服务端）：传输任务状态机 + 流式中转 + SHA-256 校验。
+- 🚧 客户端（linkory-app）：设计系统（移植自 cc-switch v7 tokens）、三栏布局、登录、会话、设备管理、传输中心、设置；业务层已对接 REST/WS/文件传输。待做：与真实服务端的端到端联调（需 Xcode 以构建 macOS 应用）、托盘/通知、拖拽发送。
+- 环境限制：本机未装完整 Xcode，暂无法 `flutter run -d macos`；UI 通过 widget 测试截图（`linkory-app/test/goldens`）验证。
+
+## 7. UI 设计规范
+
+整体视觉复刻 cc-switch（Tauri/React/Tailwind）：颜色、圆角（control 6 / panel 10 / dialog 14）、字号（11/12/13/14/15/16/18）、边框与阴影 token 见 `linkory-app/lib/theme/tokens.dart`，主题色橙 `#F97316`，支持深浅色。
+布局由 cc-switch 的两栏改为微信式三栏：图标导航栏（72px）｜列表栏（280px）｜内容区；内容区页头 52px，与 cc-switch 的 AppPageHeader 一致。
