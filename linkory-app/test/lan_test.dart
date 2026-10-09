@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -112,5 +114,49 @@ void main() {
     addTearDown(l.close);
     final out = await lanSend(addrs: ['10.255.255.1', '127.0.0.1'], port: l.port, taskId: tid, secret: secretOf(3), file: src);
     expect(out, LanSendOutcome.ok);
+  });
+
+  // Interoperability with the Rust reference implementation (linkory-core). Build it first:
+  //   cd linkory-core && cargo build --release
+  final rustBin = Platform.environment['LINKORY_LAN_BIN'] ?? '../linkory-core/target/release/linkory-lan';
+  final hasRust = File(rustBin).existsSync();
+
+  group('interop with linkory-core (Rust)', () {
+    String hex(List<int> b) => b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+
+    test('Dart sender -> Rust receiver', () async {
+      final (src, sum) = await makeFile(2 * 1024 * 1024 + 9);
+      final secret = secretOf(11);
+      final part = '${tmp.path}/rust.part';
+      final p = await Process.start(rustBin, [
+        'recv', '--listen', '0', '--task', tid, '--secret', hex(secret), '--size', '${src.lengthSync()}', '--sha256', sum, '--part', part,
+      ]);
+      final lines = <String>[];
+      final portReady = Completer<int>();
+      p.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((l) {
+        lines.add(l);
+        if (l.startsWith('PORT ') && !portReady.isCompleted) portReady.complete(int.parse(l.split(' ')[1]));
+      });
+      final port = await portReady.future.timeout(const Duration(seconds: 10));
+      final out = await lanSend(addrs: ['127.0.0.1'], port: port, taskId: tid, secret: secret, file: src);
+      expect(out, LanSendOutcome.ok);
+      expect(await p.exitCode, 0);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(lines, contains('VERIFIED'));
+      expect(await File(part).readAsBytes(), await src.readAsBytes());
+    }, skip: hasRust ? false : 'build linkory-core first');
+
+    test('Rust sender -> Dart receiver', () async {
+      final (src, sum) = await makeFile(2 * 1024 * 1024 + 9);
+      final secret = secretOf(13);
+      final inc = LanIncoming(taskId: tid, secret: secret, size: src.lengthSync(), sha256: sum, part: File('${tmp.path}/.part'));
+      final log = <String>[];
+      final l = await LanListener.bind(hooks(inc, log: log));
+      addTearDown(l.close);
+      final r = await Process.run(rustBin, ['send', '--addr', '127.0.0.1:${l.port}', '--task', tid, '--secret', hex(secret), '--file', src.path]);
+      expect(r.exitCode, 0, reason: '${r.stdout}${r.stderr}');
+      expect(log, ['start', 'verified']);
+      expect(await File('${tmp.path}/out.bin').readAsBytes(), await src.readAsBytes());
+    }, skip: hasRust ? false : 'build linkory-core first');
   });
 }

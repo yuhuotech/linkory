@@ -13,3 +13,12 @@ app-test:
 	cd linkory-app && flutter analyze && flutter test
 app-macos-dmg:
 	tools/package_macos.sh
+
+.PHONY: core-test core-build e2e
+core-test:
+	cd linkory-core && cargo test
+core-build:
+	cd linkory-core && cargo build --release
+# 需要先 make server-run（默认 :8090）；LINKORY_E2E_BIG_MB=1024 可加测大文件
+e2e:
+	cd linkory-app && LINKORY_E2E_URL=$${LINKORY_E2E_URL:-http://127.0.0.1:8090} flutter test test/e2e_test.dart
