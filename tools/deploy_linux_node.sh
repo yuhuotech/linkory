@@ -2,6 +2,7 @@
 # 把 Linux 版客户端构建并安装到局域网测试服务器，作为一个「应用运行节点」。
 #   tools/deploy_linux_node.sh            # 同步源码 → 远端构建 release → 安装到 /opt/linkory-app
 #   tools/deploy_linux_node.sh start      # 在虚拟显示（Xvfb）上以 systemd 服务运行应用
+#   tools/deploy_linux_node.sh desktop    # 安装桌面启动器和图标（应用菜单里出现「连信 Linkory」），build 会自动做
 #   tools/deploy_linux_node.sh stop|status|shot   # 停止 / 状态 / 截图（保存到 /tmp/linkory-node.png）
 # 服务器没有登录桌面会话，所以应用跑在 Xvfb 虚拟显示上；首次运行会安装依赖并下载 Flutter SDK。
 set -euo pipefail
@@ -13,7 +14,39 @@ ssh_() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" "$@"; }
 FLUTTER='$HOME/development/flutter/bin/flutter'
 ENVS='export PUB_HOSTED_URL=https://pub.flutter-io.cn FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn;'
 
+install_desktop() {
+  echo "==> 安装桌面启动器与图标"
+  tmp=$(mktemp -d)
+  for n in 32 64 128 256 512; do cp "linkory-app/assets/icons/app_$n.png" "$tmp/linkory-$n.png"; done
+  scp -q -o BatchMode=yes "$tmp"/linkory-*.png "$HOST:/tmp/"
+  rm -rf "$tmp"
+  ssh_ 'sudo bash -s' <<'REMOTE'
+set -e
+for n in 32 64 128 256 512; do
+  install -D -m 644 /tmp/linkory-$n.png /usr/share/icons/hicolor/${n}x${n}/apps/com.yuhuo.linkory.png
+  rm -f /tmp/linkory-$n.png
+done
+# The file name matches the GTK application id so the dock/Alt-Tab groups the window with this icon.
+cat > /usr/share/applications/com.yuhuo.linkory.desktop <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=连信 Linkory
+Name[en]=Linkory
+Comment=在你的设备之间互发消息和文件
+Exec=/opt/linkory-app/linkory_app
+Icon=com.yuhuo.linkory
+Terminal=false
+Categories=Network;Chat;
+StartupWMClass=com.yuhuo.linkory
+DESKTOP
+update-desktop-database /usr/share/applications 2>/dev/null || true
+gtk-update-icon-cache -q -f /usr/share/icons/hicolor 2>/dev/null || true
+echo "launcher installed"
+REMOTE
+}
+
 case "${1:-build}" in
+  desktop) install_desktop ;;
   build)
     echo "==> 检查依赖"
     ssh_ 'dpkg -s clang cmake ninja-build libgtk-3-dev xvfb libsecret-1-dev libayatana-appindicator3-dev libnotify-dev libgl1-mesa-dri imagemagick >/dev/null 2>&1' \
@@ -32,6 +65,7 @@ case "${1:-build}" in
     ssh_ "$ENVS cd ~/linkory-build/linkory-app && $FLUTTER config --enable-linux-desktop >/dev/null && $FLUTTER pub get >/dev/null && $FLUTTER build linux --release --dart-define=LINKORY_DEFAULT_SERVER=$SERVER 2>&1 | tail -25; test -x build/linux/x64/release/bundle/linkory_app"
     echo "==> 安装到 /opt/linkory-app"
     ssh_ 'sudo rm -rf /opt/linkory-app.new && sudo cp -r ~/linkory-build/linkory-app/build/linux/x64/release/bundle /opt/linkory-app.new && sudo rm -rf /opt/linkory-app && sudo mv /opt/linkory-app.new /opt/linkory-app && ls /opt/linkory-app | head'
+    install_desktop
     ;;
   start)
     ssh_ 'sudo bash -s' <<'REMOTE'
