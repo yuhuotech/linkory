@@ -213,9 +213,9 @@ class _Rail extends ConsumerWidget {
       color: c.bgSidebar,
       child: Column(children: [
         // macOS: leave room for the traffic lights (cc-switch: h-11 drag zone). Windows/Linux have nothing
-        // in the top-left corner (their buttons sit top-right), so start at 12px: the logo's centre then
-        // lines up with the centre of the 52px page header.
-        DragArea(child: SizedBox(height: (hasCustomWindowControls || debugShowWindowControls) ? 12 : 44, width: railWidth)),
+        // in the top-left corner (their buttons sit top-right): use the same gap as the logo's side margin,
+        // (72 - 28) / 2 = 22px, so it sits evenly in the corner.
+        DragArea(child: SizedBox(height: (hasCustomWindowControls || debugShowWindowControls) ? (railWidth - 28) / 2 : 44, width: railWidth)),
         const BrandLogo(),
         const SizedBox(height: 18),
         nav(Section.chats, LucideIcons.messageSquare, '设备会话'),
