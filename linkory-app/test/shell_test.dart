@@ -143,7 +143,7 @@ void main() {
 
     await t.tap(find.text('办公室 Windows'));
     await t.pumpAndSettle();
-    expect(find.text('文件我放在共享盘了，你看一下'), findsOneWidget);
+    expect(find.text('再发一条试试重试'), findsOneWidget); // newest message: always built, whatever the font metrics
     expect(find.byTooltip('返回'), findsOneWidget);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/narrow_chat_light.png'));
 
