@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/desktop.dart';
 import '../../core/models.dart';
 import '../../core/realtime.dart';
 import '../../core/store.dart';
@@ -211,7 +212,10 @@ class _Rail extends ConsumerWidget {
       width: railWidth,
       color: c.bgSidebar,
       child: Column(children: [
-        const DragArea(child: SizedBox(height: 44, width: railWidth)), // room for the macOS traffic lights (cc-switch: h-11 drag zone)
+        // macOS: leave room for the traffic lights (cc-switch: h-11 drag zone). Windows/Linux have nothing
+        // in the top-left corner (their buttons sit top-right), so start at 12px: the logo's centre then
+        // lines up with the centre of the 52px page header.
+        DragArea(child: SizedBox(height: (hasCustomWindowControls || debugShowWindowControls) ? 12 : 44, width: railWidth)),
         const BrandLogo(),
         const SizedBox(height: 18),
         nav(Section.chats, LucideIcons.messageSquare, '设备会话'),
