@@ -225,8 +225,8 @@ class _Rail extends ConsumerWidget {
       child: Column(children: [
         // macOS: leave room for the traffic lights (cc-switch: h-11 drag zone). Windows/Linux have nothing
         // in the top-left corner (their buttons sit top-right): use the same gap as the logo's side margin,
-        // (72 - 28) / 2 = 22px, so it sits evenly in the corner.
-        DragArea(child: SizedBox(height: (hasCustomWindowControls || debugShowWindowControls) ? (railWidth - 28) / 2 : 44, width: railWidth)),
+        // (72 - 28) / 2 = 22px, so it sits evenly in the corner. A browser has no traffic lights either.
+        DragArea(child: SizedBox(height: (hasCustomWindowControls || debugShowWindowControls || kIsWeb) ? (railWidth - 28) / 2 : 44, width: railWidth)),
         BrandHomeButton(onPressed: store.goHome),
         const SizedBox(height: 18),
         nav(Section.chats, LucideIcons.messageSquare, st.totalUnread > 0 ? '设备会话（${st.totalUnread} 条未读）' : '设备会话', badge: st.totalUnread),
