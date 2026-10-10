@@ -31,6 +31,8 @@ bin=$(mktemp -d)/linkory-server
 
 set -a; . linkory-server/.env.local; set +a
 export LINKORY_ADDR="127.0.0.1:$PORT" LINKORY_WEB_DIR="$WEB"
+# 本地调试：登录页可选「自建服务器」，例如填 https://linkory.dev99.cn（对方服务端需放行 http://127.0.0.1:$PORT）
+export LINKORY_WEB_ALLOW_CUSTOM_SERVER=true
 trap 'kill $SRV 2>/dev/null || true' EXIT INT TERM
 "$bin" &
 SRV=$!
