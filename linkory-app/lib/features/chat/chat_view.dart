@@ -155,6 +155,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 // Bubbles take up to 70% of the pane (never wider than 640) so long lines stay readable.
                 final maxBubble = (box.maxWidth * .7).clamp(280.0, 640.0);
                 String key(Object o) => o is ChatMessage ? (o.mine ? 'me' : 'peer') : ((o as Transfer).sender == widget.peerId ? 'peer' : 'me');
+                bool isCard(Object item) => item is Transfer || (item is ChatMessage && item.type == 'clipboard');
                 bool gap(DateTime a, DateTime b) => b.difference(a).inMinutes >= 5;
                 return Stack(children: [
                   ListView.builder(
@@ -175,6 +176,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                           it.$1.difference(previousTime).inMinutes >= 30;
                       final first = i == 0 || showTime || gap(items[i - 1].$1, it.$1) || key(items[i - 1].$2) != key(it.$2);
                       final last = i == items.length - 1 || gap(it.$1, items[i + 1].$1) || key(items[i + 1].$2) != key(it.$2);
+                      final spacing = first ? 10.0 : (isCard(it.$2) || isCard(items[i - 1].$2) ? 8.0 : 2.0);
                       final isPeer = key(it.$2) == 'peer';
                       return Column(children: [
                         if (showTime)
@@ -185,10 +187,10 @@ class _ChatViewState extends ConsumerState<ChatView> {
                             ),
                           ),
                         if (it.$2 is ChatMessage)
-                          MessageBubble(msg: it.$2 as ChatMessage, first: first, last: last, peer: peer, maxWidth: maxBubble)
+                          MessageBubble(msg: it.$2 as ChatMessage, first: first, last: last, peer: peer, maxWidth: maxBubble, topSpacing: spacing)
                         else
                           Padding(
-                            padding: EdgeInsets.only(top: first ? 10 : 2),
+                            padding: EdgeInsets.only(top: spacing),
                             child: Row(
                               mainAxisAlignment: isPeer ? MainAxisAlignment.start : MainAxisAlignment.end,
                               crossAxisAlignment: CrossAxisAlignment.end,

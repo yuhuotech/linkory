@@ -162,7 +162,10 @@ class Type {
     'Arial',
     'sans-serif',
   ];
-  static const monoFallback = ['SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', 'monospace'];
+  static const monoFallback = [
+    'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', 'monospace',
+    ...fontFamilyFallback, // CJK glyphs, including the bundled Web font.
+  ];
 
   static TextStyle _s(double size, double lh, FontWeight w) =>
       TextStyle(fontSize: size, height: lh / size, fontWeight: w, fontFamilyFallback: fontFamilyFallback);

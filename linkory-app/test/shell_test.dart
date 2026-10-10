@@ -9,7 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:linkory_app/app/app.dart';
 import 'package:linkory_app/core/session.dart';
 import 'package:linkory_app/core/server_options.dart';
-import 'package:linkory_app/core/models.dart' show Transfer;
+import 'package:linkory_app/core/models.dart' show Transfer, ChatMessage;
+import 'package:linkory_app/theme/tokens.dart';
 import 'package:linkory_app/core/store.dart';
 import 'package:linkory_app/features/transfers/transfer_card.dart' show ImagePreview;
 import 'package:linkory_app/core/updater.dart';
@@ -143,6 +144,20 @@ void main() {
     expect(find.byTooltip('发送剪贴板文本'), findsNothing);
     expect(find.text('Pixel 9'), findsOneWidget);
     expect(t.takeException(), isNull);
+  });
+
+  testWidgets('received Chinese clipboard keeps content and CJK font fallback', (t) async {
+    final state = fixtureState();
+    await pumpApp(t, state.copyWith(messages: {
+      'win': [ChatMessage(clientId: 'chinese-clipboard', peerId: 'win', mine: false,
+        type: 'clipboard', content: '现在本地领先', createdAt: DateTime(2026, 10, 10))],
+    }));
+    final text = t.widget<Text>(find.text('现在本地领先'));
+    expect(text.style!.fontFamilyFallback, contains('NotoSansSC'));
+    expect(text.style!.fontFamilyFallback, contains('PingFang SC'));
+    expect(text.style!.fontFamilyFallback, contains('Consolas'));
+    expect(text.style!.fontFamilyFallback, Type.monoFallback);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/clipboard_chinese_light.png'));
   });
 
   testWidgets('other sections render', (t) async {

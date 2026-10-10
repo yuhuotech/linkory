@@ -14,9 +14,10 @@ const avatarSlot = 36.0;
 /// One chat message. Consecutive messages from the same side form a group: the first carries the
 /// avatar and full corners, the following ones sit closer and square off the corners that touch.
 class MessageBubble extends ConsumerStatefulWidget {
-  const MessageBubble({super.key, required this.msg, this.first = true, this.last = true, this.peer, this.maxWidth = 560});
+  const MessageBubble({super.key, required this.msg, this.first = true, this.last = true, this.peer, this.maxWidth = 560, this.topSpacing});
   final ChatMessage msg;
   final bool first, last;
+  final double? topSpacing;
   final Device? peer;
   final double maxWidth;
   @override
@@ -129,7 +130,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     );
 
     return Padding(
-      padding: EdgeInsets.only(top: widget.first ? 10 : 2),
+      padding: EdgeInsets.only(top: widget.topSpacing ?? (widget.first ? 10 : 2)),
       child: MouseRegion(
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
