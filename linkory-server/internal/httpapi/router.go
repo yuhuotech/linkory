@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/linkory/linkory-server/internal/auth"
@@ -27,6 +28,8 @@ var MetricsToken string
 type Options struct {
 	// WebDir: a Flutter web build served on every path the API does not use ("" = none).
 	WebDir string
+	// WebPrefix: where the web build is mounted ("/" by default, e.g. "/web/").
+	WebPrefix string
 	// CORSOrigins: page origins allowed to call the API from a browser (empty = same origin only; "*" = any).
 	CORSOrigins []string
 	// WebCustomServer: the served web page may also sign in to other servers (widens its Content-Security-Policy).
@@ -63,11 +66,15 @@ func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL
 		(&messaging.Handler{Hub: hub, Auth: authSvc, OfflineTTL: offlineTTL, OriginHosts: opt.originHosts()}).Routes(mux)
 	}
 	if opt.WebDir != "" {
-		mux.Handle("GET /", webHandler(opt))
-		mux.HandleFunc("GET /web-config.json", func(w http.ResponseWriter, r *http.Request) {
+		prefix := webPrefix(opt.WebPrefix)
+		mux.Handle("GET "+prefix, webHandler(opt))
+		mux.HandleFunc("GET "+prefix+"web-config.json", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-cache")
 			writeJSON(w, http.StatusOK, map[string]any{"custom_server": opt.WebCustomServer})
 		})
+		if prefix != "/" {
+			mux.Handle("GET "+strings.TrimSuffix(prefix, "/"), http.RedirectHandler(prefix, http.StatusMovedPermanently))
+		}
 	}
 	if MetricsToken != "" && db != nil {
 		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {

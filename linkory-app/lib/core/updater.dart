@@ -194,19 +194,22 @@ UpdateInfo? latestRelease(
   return best;
 }
 
-/// Release notes are the hand-written install table plus GitHub's generated change list; the
-/// part users care about in a dialog is the change list.
-String shortNotes(String body, {int maxLines = 12}) {
-  final i = body.indexOf("## What's Changed");
-  var t = (i >= 0 ? body.substring(i + "## What's Changed".length) : body)
-      .trim();
-  t = t
-      .split('\n')
-      .where((l) => !l.trim().startsWith('**Full Changelog**'))
-      .join('\n')
-      .trim();
-  final lines = t.split('\n');
-  return lines.length <= maxLines ? t : '${lines.take(maxLines).join('\n')}\n…';
+/// Keep the release's changes section intact: truncating raw Markdown by line
+/// count can split tables, lists or fenced code. The dialog provides scrolling.
+String shortNotes(String body) {
+  final heading = RegExp(
+    r"^##[ \t]+(?:更新内容|版本更新|What's Changed|Changelog|Changes|Release Notes)[ \t]*\r?$",
+    multiLine: true, caseSensitive: false,
+  ).firstMatch(body);
+  var text = body;
+  if (heading != null) {
+    text = body.substring(heading.end);
+    final nextSection = RegExp(r'^##[ \t]+', multiLine: true).firstMatch(text);
+    if (nextSection != null) text = text.substring(0, nextSection.start);
+  }
+  return text.split('\n')
+      .where((line) => !line.trim().startsWith('**Full Changelog**'))
+      .join('\n').trim();
 }
 
 /// `<hash>  <file>` lines of SHA256SUMS.txt.

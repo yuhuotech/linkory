@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"compress/gzip"
 	"io"
 	"net/http"
@@ -10,11 +11,37 @@ import (
 	"strings"
 )
 
-// webHandler serves a Flutter web build (the browser edition of the app) from dir. It sits on "/" so every
-// path the API registers keeps priority; the page and the API share one origin, which means no CORS and the
-// WebSocket origin check passes by itself.
+// webPrefix normalises LINKORY_WEB_PREFIX to "/" or "/something/".
+func webPrefix(p string) string {
+	p = strings.Trim(strings.TrimSpace(p), "/")
+	if p == "" {
+		return "/"
+	}
+	return "/" + p + "/"
+}
+
+// webHandler serves a Flutter web build (the browser edition of the app) from opt.WebDir under opt.WebPrefix
+// ("/" by default; "/web/" lets a site keep its home page at "/"). Every path the API registers keeps priority;
+// the page and the API share one origin, so there is no CORS and the WebSocket origin check passes by itself.
+// The build is made once with base href "/"; here the <base> tag is rewritten to the prefix, because the app
+// loads everything relative to it.
 func webHandler(opt Options) http.Handler {
 	dir := opt.WebDir
+	prefix := webPrefix(opt.WebPrefix)
+	shell := func(w http.ResponseWriter, r *http.Request) {
+		if prefix == "/" {
+			http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+			return
+		}
+		b, err := os.ReadFile(filepath.Join(dir, "index.html"))
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		b = bytes.Replace(b, []byte(`<base href="/">`), []byte(`<base href="`+prefix+`">`), 1)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(b)
+	}
 	connect := "'self' ws: wss: blob:"
 	if opt.WebCustomServer {
 		// The page may talk to a server of the user's choice: HTTPS only (browsers block mixed content), plus this
@@ -22,7 +49,7 @@ func webHandler(opt Options) http.Handler {
 		connect = "'self' https: wss: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* blob:"
 	}
 	files := http.FileServer(http.Dir(dir))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		// The page holds the account's tokens and device key: no third-party scripts, no framing.
 		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "+
@@ -44,6 +71,10 @@ func webHandler(opt Options) http.Handler {
 
 		p := path.Clean("/" + r.URL.Path)
 		if p != "/" && !strings.HasPrefix(p, "/.") {
+			if p == "/index.html" {
+				shell(w, r)
+				return
+			}
 			if st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(p))); err == nil && !st.IsDir() {
 				files.ServeHTTP(w, r)
 				return
@@ -53,8 +84,12 @@ func webHandler(opt Options) http.Handler {
 				return
 			}
 		}
-		http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+		shell(w, r)
 	})
+	if prefix == "/" {
+		return h
+	}
+	return http.StripPrefix(strings.TrimSuffix(prefix, "/"), h)
 }
 
 func compressible(p string) bool {

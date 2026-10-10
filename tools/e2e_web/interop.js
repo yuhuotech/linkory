@@ -52,7 +52,7 @@ async function until(fn, what, seconds = 60) {
     }
   }, mode);
 
-  await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+  await page.goto(process.env.PAGE || url, { waitUntil: 'networkidle2', timeout: 60000 });
   await sleep(3000);
 
   // ---- sign in ----

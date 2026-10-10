@@ -65,7 +65,7 @@ class _UpdateDialog extends ConsumerWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(color: c.bgSubtle, borderRadius: BorderRadius.circular(Radii.control)),
-                child: SingleChildScrollView(child: SelectableText(notes, style: Type.caption.copyWith(color: c.text2, height: 1.5))),
+                child: SingleChildScrollView(child: ReleaseNotes(data: notes)),
               ),
             ],
             if (plan?.manualReason != null) ...[

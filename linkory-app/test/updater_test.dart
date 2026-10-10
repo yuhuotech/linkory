@@ -53,6 +53,14 @@ void main() {
     });
   });
 
+  test('shortNotes extracts Chinese change section and preserves full Markdown', () {
+    final changes = List.generate(20, (i) => '- 更新 $i').join('\n');
+    final notes = shortNotes('## 下载\n| 平台 | 安装包 |\n\n## 更新内容\n### 修复\n$changes\n\n## 自建服务端\n说明');
+    expect(notes, '### 修复\n$changes');
+    expect(notes, isNot(contains('安装包')));
+    expect(notes, isNot(contains('自建服务端')));
+  });
+
   test('shortNotes keeps the change list and drops the changelog link', () {
     final n = shortNotes("intro table\n\n## What's Changed\n* one\n* two\n\n**Full Changelog**: https://x");
     expect(n, '* one\n* two');

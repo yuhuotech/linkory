@@ -228,3 +228,43 @@ func TestDeviceReportsItsOwnVersion(t *testing.T) {
 		t.Fatalf("versions: %v", got)
 	}
 }
+
+func TestWebCanLiveUnderAPrefix(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.html"), []byte(`<html><head><base href="/"></head>shell</html>`), 0o644)
+	os.WriteFile(filepath.Join(dir, "main.dart.js"), []byte("js"), 0o644)
+	h := NewRouter(nil, nil, nil, 0, 0, Options{WebDir: dir, WebPrefix: "web"}) // "web", "/web" and "/web/" all mean the same
+	get := func(p string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
+		return rec
+	}
+	if r := get("/web/"); r.Code != 200 || !strings.Contains(r.Body.String(), `<base href="/web/">`) {
+		t.Fatalf("/web/: %d %q", r.Code, r.Body.String())
+	}
+	if r := get("/web/index.html"); r.Code != 200 || !strings.Contains(r.Body.String(), `<base href="/web/">`) {
+		t.Fatalf("/web/index.html: %d %q", r.Code, r.Body.String())
+	}
+	if r := get("/web/some/route"); r.Code != 200 || !strings.Contains(r.Body.String(), "shell") {
+		t.Fatalf("spa fallback: %d", r.Code)
+	}
+	if r := get("/web/main.dart.js"); r.Code != 200 || r.Body.String() != "js" {
+		t.Fatalf("asset: %d %q", r.Code, r.Body.String())
+	}
+	if r := get("/web/nope.js"); r.Code != 404 {
+		t.Fatalf("missing asset: %d", r.Code)
+	}
+	if r := get("/web"); r.Code != 301 || r.Header().Get("Location") != "/web/" {
+		t.Fatalf("/web: %d %q", r.Code, r.Header().Get("Location"))
+	}
+	if r := get("/web/web-config.json"); r.Code != 200 || !strings.Contains(r.Body.String(), "custom_server") {
+		t.Fatalf("web-config: %d %q", r.Code, r.Body.String())
+	}
+	// Outside the prefix the shell is not served: the site root belongs to whatever else lives there.
+	if r := get("/"); r.Code != 404 {
+		t.Fatalf("/ must not serve the app: %d", r.Code)
+	}
+	if r := get("/healthz"); r.Code != 200 {
+		t.Fatal("API routes must still work")
+	}
+}

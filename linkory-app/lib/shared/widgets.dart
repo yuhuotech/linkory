@@ -1,11 +1,61 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/desktop.dart';
 
 import '../theme/tokens.dart';
+
+/// Token-styled Markdown for release notes. Remote images are not loaded.
+class ReleaseNotes extends StatelessWidget {
+  const ReleaseNotes({super.key, required this.data});
+  final String data;
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return MarkdownBody(
+      data: data,
+      selectable: true,
+      imageBuilder: (_, _, _) => const SizedBox.shrink(),
+      onTapLink: (_, href, _) {
+        final uri = href == null ? null : Uri.tryParse(href);
+        if (uri != null && ['https', 'http'].contains(uri.scheme) && uri.host.isNotEmpty) {
+          launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      },
+      styleSheet: MarkdownStyleSheet(
+        p: Type.body.copyWith(color: c.text2),
+        h1: Type.section.copyWith(color: c.text1),
+        h2: Type.strong.copyWith(color: c.text1),
+        h3: Type.strong.copyWith(color: c.text1),
+        h4: Type.body.copyWith(color: c.text1, fontWeight: FontWeight.w600),
+        h5: Type.body.copyWith(color: c.text1, fontWeight: FontWeight.w600),
+        h6: Type.caption.copyWith(color: c.text1, fontWeight: FontWeight.w600),
+        a: Type.body.copyWith(color: c.actionText),
+        listBullet: Type.body.copyWith(color: c.text2),
+        code: Type.caption.copyWith(color: c.text1, backgroundColor: c.bgCard,
+          fontFamily: 'monospace', fontFamilyFallback: Type.monoFallback),
+        codeblockDecoration: BoxDecoration(color: c.bgCard,
+          borderRadius: BorderRadius.circular(Radii.control)),
+        codeblockPadding: const EdgeInsets.all(8),
+        blockSpacing: 8,
+        listIndent: 16,
+        blockquote: Type.body.copyWith(color: c.text2),
+        blockquoteDecoration: BoxDecoration(color: c.bgCard,
+          borderRadius: BorderRadius.circular(Radii.control)),
+        blockquotePadding: const EdgeInsets.all(8),
+        tableHead: Type.caption.copyWith(color: c.text1, fontWeight: FontWeight.w600),
+        tableBody: Type.caption.copyWith(color: c.text2),
+        tableBorder: TableBorder.all(color: c.border),
+        tableCellsPadding: const EdgeInsets.all(8),
+        horizontalRuleDecoration: BoxDecoration(border: Border(top: BorderSide(color: c.border))),
+      ),
+    );
+  }
+}
 
 /// Unified brand asset shared by login and the desktop rail.
 class BrandLogo extends StatelessWidget {

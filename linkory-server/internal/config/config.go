@@ -18,6 +18,8 @@ type Config struct {
 	WebDir           string // optional: a Flutter web build served on every path the API does not use
 	// CORSOrigins lists the page origins (https://my.example.com) allowed to call this server from a browser; empty = same origin only.
 	CORSOrigins []string
+	// WebPrefix is the URL path the web build is served under (default "/"; "/web/" keeps "/" free for a home page).
+	WebPrefix string
 	// WebCustomServer lets the web page served here also sign in to other servers (the sign-in page then offers it).
 	WebCustomServer bool
 }
@@ -31,6 +33,7 @@ func Load() Config {
 		OfflineMsgTTL:    envDuration("LINKORY_OFFLINE_MSG_TTL", 30*24*time.Hour),
 		JWTSecret:        env("LINKORY_JWT_SECRET", ""),
 		WebDir:           env("LINKORY_WEB_DIR", ""),
+		WebPrefix:        env("LINKORY_WEB_PREFIX", "/"),
 		CORSOrigins:      envList("LINKORY_CORS_ORIGINS"),
 		WebCustomServer:  env("LINKORY_WEB_ALLOW_CUSTOM_SERVER", "") == "true",
 		MaxTransferBytes: envInt64("LINKORY_MAX_TRANSFER_BYTES", 2<<30),
