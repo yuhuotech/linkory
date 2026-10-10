@@ -1,6 +1,6 @@
 module github.com/linkory/linkory-server
 
-go 1.26.3
+go 1.26.9
 
 require github.com/go-sql-driver/mysql v1.10.1
 

@@ -120,6 +120,32 @@ func TestAdminLoginGuards(t *testing.T) {
 	}
 }
 
+// TestAdminLoginRateLimitSurvivesSpoofedIP checks that an attacker connecting from a trusted proxy
+// address (default: loopback) cannot defeat the login rate limit merely by sending a fresh
+// X-Real-IP on every attempt: the raw connection address and the username are also rate-limited.
+func TestAdminLoginRateLimitSurvivesSpoofedIP(t *testing.T) {
+	_, h := setupAdmin(t)
+	post := func(spoofedIP string) int {
+		r := httptest.NewRequest("POST", "http://admin.test/api/admin/v1/auth/login", strings.NewReader(`{"username":"owner","password":"nope-nope-nope"}`))
+		r.RemoteAddr = "127.0.0.1:4444" // the default trusted proxy address
+		r.Header.Set("Origin", "http://admin.test")
+		r.Header.Set("X-Linkory-Admin", "1")
+		r.Header.Set("X-Real-IP", spoofedIP)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	for i := 0; i < 5; i++ {
+		// A different claimed IP on every attempt must not buy extra attempts.
+		if c := post(fmt.Sprintf("9.9.9.%d", i)); c != 401 {
+			t.Fatalf("attempt %d: %d", i, c)
+		}
+	}
+	if c := post("9.9.9.250"); c != 429 {
+		t.Fatal("brute force with rotating spoofed X-Real-IP was not limited", c)
+	}
+}
+
 func TestAdminReadonlyAuditAndQueries(t *testing.T) {
 	s, h := setupAdmin(t)
 	owner := managementLogin(t, h, "owner")

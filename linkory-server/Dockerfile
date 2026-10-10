@@ -1,4 +1,4 @@
-FROM golang:1.26.5-bookworm AS build
+FROM golang:1.26.9-bookworm AS build
 ARG GOPROXY=https://proxy.golang.org,direct
 ARG VERSION=dev
 ENV GOPROXY=${GOPROXY}

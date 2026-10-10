@@ -177,6 +177,20 @@ func (s *Service) ListAccounts(ctx context.Context) ([]Account, error) {
 	return out, rows.Err()
 }
 
+// recentLocked prunes and returns the failures still inside the rate-limit window for one key.
+// Callers must hold s.mu.
+func (s *Service) recentLocked(key string) []time.Time {
+	cut := time.Now().Add(-5 * time.Minute)
+	var kept []time.Time
+	for _, t := range s.failures[key] {
+		if t.After(cut) {
+			kept = append(kept, t)
+		}
+	}
+	s.failures[key] = kept
+	return kept
+}
+
 // pruneFailures forgets login failures older than the rate-limit window so the map cannot grow without bound.
 func (s *Service) pruneFailures() {
 	s.mu.Lock()
@@ -216,17 +230,28 @@ func (s *Service) trusted(r *http.Request) bool {
 	}
 	return false
 }
-func (s *Service) sourceIP(r *http.Request) string {
+// rawAddr is the TCP peer address Go itself observed, ignoring any client-supplied header. Unlike
+// sourceIP it cannot be spoofed by a request that merely originates from a trusted proxy's address
+// (loopback by default): it is what login rate-limiting keys on so that header spoofing cannot, by
+// itself, buy unlimited guesses.
+func (s *Service) rawAddr(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
+	return host
+}
+
+// sourceIP is the address attributed to a request for audit logging: behind a configured reverse
+// proxy (trusted()) it takes X-Real-IP, which the proxy is responsible for overwriting on every
+// hop so a client cannot set it itself. Do not use this alone as a rate-limit key — see rawAddr.
+func (s *Service) sourceIP(r *http.Request) string {
 	if s.trusted(r) {
 		if real := net.ParseIP(r.Header.Get("X-Real-IP")); real != nil {
 			return real.String()
 		}
 	}
-	return host
+	return s.rawAddr(r)
 }
 func (s *Service) sameOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
@@ -292,16 +317,19 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		apiutil.Fail(w, apiutil.Err(400, "invalid_input", "输入过长"))
 		return
 	}
-	limitKey := s.sourceIP(r)
+	// Rate-limit on several independent keys: the raw TCP peer address always counts (a client
+	// cannot spoof it merely by sending a header, even from a trusted proxy's own address), the
+	// reported IP catches the real client behind a proxy, and the username stops an attacker from
+	// defeating both by claiming a fresh IP on every attempt.
+	limitKeys := []string{"conn\x00" + s.rawAddr(r), "ip\x00" + s.sourceIP(r), "user\x00" + strings.ToLower(in.Username)}
 	s.mu.Lock()
-	var recent []time.Time
-	for _, t := range s.failures[limitKey] {
-		if time.Since(t) < 5*time.Minute {
-			recent = append(recent, t)
+	blocked := false
+	for _, k := range limitKeys {
+		if len(s.recentLocked(k)) >= 5 {
+			blocked = true
+			break
 		}
 	}
-	s.failures[limitKey] = recent
-	blocked := len(recent) >= 5
 	s.mu.Unlock()
 	if blocked {
 		apiutil.Fail(w, apiutil.Err(429, "rate_limited", "失败次数过多，请 5 分钟后重试"))
@@ -319,7 +347,9 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if !verify(in.Password, hash) || err == sql.ErrNoRows {
 		s.mu.Lock()
-		s.failures[limitKey] = append(s.failures[limitKey], time.Now())
+		for _, k := range limitKeys {
+			s.failures[k] = append(s.failures[k], time.Now())
+		}
 		s.mu.Unlock()
 		if e := audit.Write(r.Context(), s.DB, audit.Event{Actor: in.Username, Action: "auth.login", Result: "failure", IP: s.sourceIP(r)}); e != nil {
 			apiutil.Fail(w, e)
@@ -348,7 +378,9 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	delete(s.failures, limitKey)
+	for _, k := range limitKeys {
+		delete(s.failures, k)
+	}
 	s.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/api/admin/", HttpOnly: true, Secure: s.SecureCookie, SameSite: http.SameSiteStrictMode, Expires: p.Expires})
 	apiutil.JSON(w, 200, p)
