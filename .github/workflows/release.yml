@@ -249,7 +249,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - name: Build (CanvasKit bundled: no gstatic dependency, works behind the GFW)
+      - name: "Build (CanvasKit bundled, so no gstatic dependency: works behind the GFW)"
         working-directory: linkory-app
         run: |
           flutter pub get
