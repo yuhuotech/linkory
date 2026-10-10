@@ -37,7 +37,7 @@ class ReleaseNotes extends StatelessWidget {
         a: Type.body.copyWith(color: c.actionText),
         listBullet: Type.body.copyWith(color: c.text2),
         code: Type.caption.copyWith(color: c.text1, backgroundColor: c.bgCard,
-          fontFamily: 'monospace', fontFamilyFallback: Type.monoFallback),
+          fontFamily: 'monospace', fontFamilyFallback: [...Type.monoFallback, ...Type.fontFamilyFallback]),
         codeblockDecoration: BoxDecoration(color: c.bgCard,
           borderRadius: BorderRadius.circular(Radii.control)),
         codeblockPadding: const EdgeInsets.all(8),

@@ -343,7 +343,7 @@ void main() {
     final info = UpdateInfo(
       version: SemVer.tryParse('0.2.0')!,
       tag: 'v0.2.0',
-      notes: "## What's Changed\n* 会话排版改版 by @yuhuo in #12\n* 新增软件更新 by @yuhuo in #13\n\n**Full Changelog**: x",
+      notes: "## 下载\n| 平台 | 安装包 |\n\n## 更新内容\n### 体验优化\n- **会话排版改版**，历史消息更清晰\n- 新增软件更新，支持 `签名校验`\n- [查看完整更新记录](https://github.com/yuhuotech/linkory/releases)\n\n## 自建服务端\n部署说明",
       pageUrl: 'https://github.com/yuhuotech/linkory/releases/tag/v0.2.0',
       prerelease: false,
       publishedAt: DateTime(2025, 3, 14, 9, 0),
@@ -364,6 +364,15 @@ void main() {
     expect(find.text('前往下载页'), findsOneWidget);
     expect(find.textContaining('新增软件更新'), findsOneWidget);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/update_dialog_light.png'));
+    expect(find.text('体验优化'), findsOneWidget);
+    expect(find.text('部署说明'), findsNothing);
+    await t.tap(find.byTooltip('关闭'));
+    await t.pumpAndSettle();
+    await pumpApp(t, fixtureState(), b: Brightness.dark, update: available());
+    await t.tap(find.byTooltip('发现新版本 0.2.0，点击查看并更新'));
+    await t.pumpAndSettle();
+    expect(find.text('发现新版本'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/update_dialog_dark.png'));
   });
 
   testWidgets('update available but this install cannot self-update: only the download page is offered', (t) async {
