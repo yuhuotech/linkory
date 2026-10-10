@@ -192,3 +192,39 @@ func TestWebConfigAndCSPFollowCustomServerSetting(t *testing.T) {
 		}
 	}
 }
+
+func TestReloginRefreshesVersionButKeepsName(t *testing.T) {
+	h := setup(t)
+	call(h, "POST", "/api/v1/auth/register", "", map[string]any{"username": "gina", "password": "password123"})
+	first := login(t, h, "gina", "laptop")
+	id, tok := first["device_id"].(string), first["access_token"].(string)
+	call(h, "PATCH", "/api/v1/devices/"+id, tok, map[string]any{"name": "My renamed laptop"})
+	call(h, "POST", "/api/v1/auth/login", "", map[string]any{"username": "gina", "password": "password123",
+		"device": map[string]any{"device_id": id, "name": "laptop", "app_version": "9.9.9", "os_version": "NewOS 2"}})
+	_, list := call(h, "GET", "/api/v1/devices", tok, nil)
+	d := list["devices"].([]any)[0].(map[string]any)
+	if d["app_version"] != "9.9.9" || d["os_version"] != "NewOS 2" || d["name"] != "My renamed laptop" {
+		t.Fatalf("device after re-login: %v", d)
+	}
+}
+
+func TestDeviceReportsItsOwnVersion(t *testing.T) {
+	h := setup(t)
+	call(h, "POST", "/api/v1/auth/register", "", map[string]any{"username": "hank", "password": "password123"})
+	a := login(t, h, "hank", "a")
+	b := login(t, h, "hank", "b")
+	at, aid, bid := a["access_token"].(string), a["device_id"].(string), b["device_id"].(string)
+	if code, _ := call(h, "PATCH", "/api/v1/devices/"+aid, at, map[string]any{"app_version": "2.0.0"}); code != 204 {
+		t.Fatalf("self version update: %d", code)
+	}
+	call(h, "PATCH", "/api/v1/devices/"+bid, at, map[string]any{"app_version": "6.6.6"}) // someone else's: ignored
+	_, list := call(h, "GET", "/api/v1/devices", at, nil)
+	got := map[string]string{}
+	for _, d := range list["devices"].([]any) {
+		m := d.(map[string]any)
+		got[m["id"].(string)] = m["app_version"].(string)
+	}
+	if got[aid] != "2.0.0" || got[bid] == "6.6.6" {
+		t.Fatalf("versions: %v", got)
+	}
+}

@@ -124,6 +124,12 @@ func (s *Service) ensureDevice(ctx context.Context, uid uint64, d DeviceInfo) (s
 		var revoked sql.NullTime
 		err := s.DB.QueryRowContext(ctx, `SELECT user_id,revoked_at FROM devices WHERE id=?`, d.DeviceID).Scan(&owner, &revoked)
 		if err == nil && owner == uid && !revoked.Valid {
+			// Same device signing in again: keep its name (the user may have renamed it) but refresh what changes
+			// with updates, otherwise the device list would show the version it was first installed with.
+			if d.AppVersion != "" || d.OSVersion != "" {
+				_, _ = s.DB.ExecContext(ctx, `UPDATE devices SET app_version=IF(?='',app_version,?), os_version=IF(?='',os_version,?) WHERE id=?`,
+					clip(d.AppVersion, 32), clip(d.AppVersion, 32), clip(d.OSVersion, 64), clip(d.OSVersion, 64), d.DeviceID)
+			}
 			return d.DeviceID, nil
 		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {

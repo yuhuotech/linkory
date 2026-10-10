@@ -64,24 +64,39 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) rename(w http.ResponseWriter, r *http.Request) {
 	p := auth.PrincipalFrom(r.Context())
 	var req struct {
-		Name string `json:"name"`
+		Name       *string `json:"name"`
+		AppVersion string  `json:"app_version"`
+		OSVersion  string  `json:"os_version"`
 	}
 	if err := apiutil.Decode(r, &req); err != nil {
 		apiutil.Fail(w, err)
 		return
 	}
-	name := strings.TrimSpace(req.Name)
+	id := r.PathValue("id")
+	// A device reports its own version after an update (the list would otherwise keep showing the one it signed up with).
+	if (req.AppVersion != "" || req.OSVersion != "") && id == p.DeviceID {
+		_, _ = h.DB.ExecContext(r.Context(), `UPDATE devices SET app_version=IF(?='',app_version,?), os_version=IF(?='',os_version,?) WHERE id=? AND user_id=?`,
+			clip(req.AppVersion, 32), clip(req.AppVersion, 32), clip(req.OSVersion, 64), clip(req.OSVersion, 64), id, p.UserID)
+		if req.Name == nil {
+			w.WriteHeader(204)
+			return
+		}
+	}
+	name := ""
+	if req.Name != nil {
+		name = strings.TrimSpace(*req.Name)
+	}
 	if name == "" || len([]rune(name)) > 64 {
 		apiutil.Fail(w, apiutil.Err(400, "invalid_device_name", "device name must be 1-64 characters"))
 		return
 	}
 	// Ownership is part of the WHERE clause: other accounts' devices look like 404.
 	var exists int
-	if err := h.DB.QueryRowContext(r.Context(), `SELECT 1 FROM devices WHERE id=? AND user_id=? AND revoked_at IS NULL`, r.PathValue("id"), p.UserID).Scan(&exists); err != nil {
+	if err := h.DB.QueryRowContext(r.Context(), `SELECT 1 FROM devices WHERE id=? AND user_id=? AND revoked_at IS NULL`, id, p.UserID).Scan(&exists); err != nil {
 		apiutil.Fail(w, apiutil.ErrNotFound)
 		return
 	}
-	if _, err := h.DB.ExecContext(r.Context(), `UPDATE devices SET name=? WHERE id=? AND user_id=?`, name, r.PathValue("id"), p.UserID); err != nil {
+	if _, err := h.DB.ExecContext(r.Context(), `UPDATE devices SET name=? WHERE id=? AND user_id=?`, name, id, p.UserID); err != nil {
 		apiutil.Fail(w, err)
 		return
 	}
@@ -105,4 +120,11 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 		h.OnRemove(id)
 	}
 	w.WriteHeader(204)
+}
+
+func clip(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
+	}
+	return s
 }

@@ -16,6 +16,7 @@ import '../shared/format.dart';
 import 'models.dart';
 import 'realtime.dart';
 import 'session.dart';
+import 'version.dart';
 import 'web/browser.dart';
 
 enum Section { chats, devices, transfers, settings }
@@ -250,7 +251,18 @@ class AppStore extends Notifier<AppState> {
     _rt.start();
     unawaited(ref.read(systemNotifierProvider).setUnread(state.totalUnread));
     await refreshAll();
+    unawaited(_reportVersion());
     await _startLan();
+  }
+
+  /// After an update the server still lists the version this device first signed up with: tell it the current one.
+  Future<void> _reportVersion() async {
+    final me = state.devices.where((d) => d.current).firstOrNull;
+    if (me == null || me.appVersion == appVersion) return;
+    try {
+      await _api.request('PATCH', '/devices/$_self', body: {'app_version': appVersion, 'os_version': osVersionString()});
+      await loadDevices();
+    } catch (_) {}
   }
 
   // ---- same-network direct transfer -------------------------------------------------------

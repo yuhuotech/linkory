@@ -11,9 +11,12 @@ export PATH="$HOME/development/flutter/bin:$PATH"
 PORT="${PORT:-8098}"
 WEB="$PWD/linkory-app/build/web"
 
-if [ "${REBUILD:-}" = 1 ] || [ ! -f "$WEB/index.html" ]; then
-  echo "==> 构建网页版（首次约 1 分钟）"
-  (cd linkory-app && flutter build web --release --no-web-resources-cdn --dart-define=LINKORY_VERSION=dev)
+# 版本号取最近的 git tag（去掉 v），tag 之后有新提交时形如 0.1.3-4-g9750ce9，有未提交改动时加 -dirty；版本变了或有未提交改动都会重新构建
+VER=$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo dev)
+if [ "${REBUILD:-}" = 1 ] || [ ! -f "$WEB/index.html" ] || [ "$(cat "$WEB/.version" 2>/dev/null)" != "$VER" ] || [[ "$VER" == *-dirty ]]; then
+  echo "==> 构建网页版 ${VER}（首次约 1 分钟）"
+  (cd linkory-app && flutter build web --release --no-web-resources-cdn --dart-define=LINKORY_VERSION="$VER")
+  echo "$VER" > "$WEB/.version"
 fi
 
 [ -f linkory-server/.env.local ] || { echo "缺少 linkory-server/.env.local（数据库连接）" >&2; exit 1; }
