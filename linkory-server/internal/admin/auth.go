@@ -35,6 +35,7 @@ type Service struct {
 	DefaultOfflineDays int
 	mu                 sync.Mutex
 	failures           map[string][]time.Time
+	mon                monitor
 }
 
 func NewService(db *sql.DB, hub *messaging.Hub, offlineDays int) *Service {

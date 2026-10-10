@@ -24,6 +24,7 @@ func (s *Service) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/v1/auth/logout", s.protect(false, s.logout))
 	mux.HandleFunc("POST /api/admin/v1/auth/password", s.protect(false, s.changePassword))
 	read("overview", s.overview)
+	read("monitor", s.monitorHandler)
 	read("users", s.users)
 	read("users/{id}", s.userDetail)
 	read("devices", s.devices)

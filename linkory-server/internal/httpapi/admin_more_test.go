@@ -286,3 +286,26 @@ func TestAdminConsoleStaticAndCSP(t *testing.T) {
 		t.Fatal(csp)
 	}
 }
+
+func TestAdminMonitor(t *testing.T) {
+	_, h := setupAdmin(t)
+	anon := &adminClient{h: h}
+	if code, _ := anon.request("GET", "monitor", nil); code != 401 {
+		t.Fatal("monitor reachable without a session", code)
+	}
+	viewer := managementLogin(t, h, "viewer")
+	code, out := viewer.request("GET", "monitor", nil)
+	if code != 200 {
+		t.Fatal(code, out)
+	}
+	cur := out["current"].(map[string]any)
+	if cur["goroutines"].(float64) < 1 || cur["rss_bytes"].(float64) <= 0 || cur["heap_bytes"].(float64) <= 0 || cur["cpus"].(float64) < 1 {
+		t.Fatal("empty reading", cur)
+	}
+	if len(out["history"].([]any)) < 1 || out["interval_seconds"].(float64) != 5 {
+		t.Fatal("history", out)
+	}
+	if _, ok := cur["db_max"]; !ok {
+		t.Fatal("db pool missing", cur)
+	}
+}

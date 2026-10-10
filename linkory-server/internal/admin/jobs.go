@@ -333,6 +333,7 @@ func (s *Service) retryJob(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 func (s *Service) Run(ctx context.Context) {
+	go s.runMonitor(ctx)
 	// Deployment is single-instance; recover interrupted jobs instead of dropping them.
 	_, _ = s.DB.ExecContext(ctx, `UPDATE admin_jobs SET status='QUEUED' WHERE status='RUNNING'`)
 	tick := time.NewTicker(time.Second)

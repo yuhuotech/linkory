@@ -2,7 +2,9 @@ package admin
 
 import (
 	"net/http/httptest"
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestProxyOriginAndIPTrust(t *testing.T) {
@@ -43,5 +45,30 @@ func TestManagementPasswords(t *testing.T) {
 	hash := passwordHash(pw)
 	if !verify(pw, hash) || verify("wrong", hash) || verify(pw, "invalid") {
 		t.Fatal("password verification")
+	}
+}
+
+func TestSampleMeasuresCPUBetweenReadings(t *testing.T) {
+	s := NewService(nil, nil, 30)
+	first := s.sample()
+	if first.CPUPercent != 0 {
+		t.Fatal("first reading has nothing to compare with", first.CPUPercent)
+	}
+	deadline := time.Now().Add(150 * time.Millisecond)
+	for x := 0; time.Now().Before(deadline); x++ {
+		_ = x * x
+	}
+	second := s.sample()
+	if runtime.GOOS != "windows" && second.CPUPercent <= 0 {
+		t.Fatal("busy loop not visible in CPU percent", second.CPUPercent)
+	}
+	if len(s.mon.history) != 2 {
+		t.Fatal("history", len(s.mon.history))
+	}
+	for i := 0; i < monitorHistory+5; i++ {
+		s.sample()
+	}
+	if len(s.mon.history) != monitorHistory {
+		t.Fatal("history not capped", len(s.mon.history))
 	}
 }
