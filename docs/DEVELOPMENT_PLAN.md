@@ -88,3 +88,7 @@ linkory/
 
 整体视觉复刻 cc-switch（Tauri/React/Tailwind）：颜色、圆角（control 6 / panel 10 / dialog 14）、字号（11/12/13/14/15/16/18）、边框与阴影 token 见 `linkory-app/lib/theme/tokens.dart`，主题色橙 `#F97316`，支持深浅色。
 布局由 cc-switch 的两栏改为微信式三栏：图标导航栏（72px）｜列表栏（280px）｜内容区；内容区页头 52px，与 cc-switch 的 AppPageHeader 一致。窗口宽度 < 720 时折叠为单栏 + 底部导航（移动端），详见 `docs/UI_SPEC.md`。
+
+## 管理后台阶段
+
+范围与设计已冻结于 `docs/ADMIN_DESIGN.md`，协议见 `linkory-protocol/PROTOCOL.md` 管理 API。实现独立管理员/只读角色、Cookie/CSRF、运营概览、用户/设备/传输管理、持久化保留策略及删除队列、审计和前端静态构建。管理员初始化通过服务器 CLI，生产启用与普通应用发布分离。

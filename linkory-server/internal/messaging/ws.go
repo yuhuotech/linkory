@@ -23,9 +23,10 @@ const (
 )
 
 type Handler struct {
-	Hub        *Hub
-	Auth       *auth.Service
-	OfflineTTL time.Duration
+	Hub           *Hub
+	Auth          *auth.Service
+	OfflineTTL    time.Duration
+	OfflineTTLFor func(context.Context) time.Duration
 	// OriginHosts: browser page hosts (besides this server itself) allowed to open the WebSocket; "*" = any.
 	OriginHosts []string
 }
@@ -76,7 +77,11 @@ func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 
 	// Initial state: who is online, then everything not yet delivered.
 	c.send("presence.snapshot", map[string]any{"online_device_ids": h.Hub.OnlineDevices(p.UserID, p.DeviceID)})
-	if pending, err := h.Hub.Store.Pending(ctx, p.DeviceID, h.OfflineTTL); err == nil {
+	ttl := h.OfflineTTL
+	if h.OfflineTTLFor != nil {
+		ttl = h.OfflineTTLFor(ctx)
+	}
+	if pending, err := h.Hub.Store.Pending(ctx, p.DeviceID, ttl); err == nil {
 		for _, m := range pending {
 			c.send("message.receive", m)
 		}

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/linkory/linkory-server/internal/admin"
 	"github.com/linkory/linkory-server/internal/auth"
 	"github.com/linkory/linkory-server/internal/devices"
 	"github.com/linkory/linkory-server/internal/messaging"
@@ -26,6 +27,8 @@ var MetricsToken string
 
 // Options are the deployment choices of a server that are not about the database.
 type Options struct {
+	Admin    *admin.Service
+	AdminDir string
 	// WebDir: a Flutter web build served on every path the API does not use ("" = none).
 	WebDir string
 	// WebPrefix: where the web build is mounted ("/" by default, e.g. "/web/").
@@ -34,6 +37,8 @@ type Options struct {
 	CORSOrigins []string
 	// WebCustomServer: the served web page may also sign in to other servers (widens its Content-Security-Policy).
 	WebCustomServer bool
+	// StrictCSP: serve with the admin console's tighter Content-Security-Policy (internal use for /admin/).
+	StrictCSP bool
 }
 
 // originHosts is the host part of CORSOrigins, for the WebSocket origin check.
@@ -52,6 +57,13 @@ func (o Options) originHosts() []string {
 
 func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL time.Duration, maxTransfer uint64, opt Options) http.Handler {
 	mux := http.NewServeMux()
+	if opt.Admin != nil {
+		opt.Admin.Routes(mux)
+	}
+	if opt.AdminDir != "" {
+		mux.Handle("GET /admin/", webHandler(Options{WebDir: opt.AdminDir, WebPrefix: "/admin/", StrictCSP: true}))
+		mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
+	}
 	if authSvc != nil {
 		authSvc.OnRevoke = func(ids []string) {
 			for _, id := range ids {
@@ -61,9 +73,22 @@ func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL
 		authSvc.Routes(mux)
 		(&devices.Handler{DB: db, Auth: authSvc, OnRemove: func(id string) { hub.Disconnect(id) }}).Routes(mux)
 		tr := &transfers.Handler{Svc: &transfers.Service{DB: db, MaxBytes: maxTransfer}, Auth: authSvc, Hub: hub}
+		if opt.Admin != nil {
+			opt.Admin.AbortTransfer = tr.AbortAndNotify
+		}
 		tr.Routes(mux)
 		go tr.RunSweeper(context.Background())
-		(&messaging.Handler{Hub: hub, Auth: authSvc, OfflineTTL: offlineTTL, OriginHosts: opt.originHosts()}).Routes(mux)
+		mh := &messaging.Handler{Hub: hub, Auth: authSvc, OfflineTTL: offlineTTL, OriginHosts: opt.originHosts()}
+		if opt.Admin != nil {
+			mh.OfflineTTLFor = func(ctx context.Context) time.Duration {
+				p, e := opt.Admin.Policy(ctx)
+				if e != nil {
+					return offlineTTL
+				}
+				return time.Duration(p.OfflineDays) * 24 * time.Hour
+			}
+		}
+		mh.Routes(mux)
 	}
 	if opt.WebDir != "" {
 		prefix := webPrefix(opt.WebPrefix)

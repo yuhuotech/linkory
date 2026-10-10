@@ -99,7 +99,8 @@ func (s *Service) Login(ctx context.Context, username, password, ip string, d De
 	}
 	var uid uint64
 	var hash string
-	err := s.DB.QueryRowContext(ctx, `SELECT id,password_hash FROM users WHERE username=?`, strings.TrimSpace(username)).Scan(&uid, &hash)
+	var disabled sql.NullTime
+	err := s.DB.QueryRowContext(ctx, `SELECT id,password_hash,disabled_at FROM users WHERE username=?`, strings.TrimSpace(username)).Scan(&uid, &hash, &disabled)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -111,11 +112,32 @@ func (s *Service) Login(ctx context.Context, username, password, ip string, d De
 		s.recordFailure(key)
 		return nil, apiutil.Err(401, "invalid_credentials", "wrong username or password")
 	}
+	if disabled.Valid {
+		return nil, apiutil.ErrForbidden
+	}
+	// Hold the account through device/session registration so administrative
+	// freeze or deletion cannot race a successful password verification.
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var live uint64
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=? AND disabled_at IS NULL FOR SHARE`, uid).Scan(&live); err != nil {
+		return nil, apiutil.ErrForbidden
+	}
 	deviceID, err := s.ensureDevice(ctx, uid, d)
 	if err != nil {
 		return nil, err
 	}
-	return s.newSession(ctx, uid, deviceID)
+	tokens, err := s.newSession(ctx, uid, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return tokens, nil
 }
 
 func (s *Service) ensureDevice(ctx context.Context, uid uint64, d DeviceInfo) (string, error) {
@@ -306,7 +328,7 @@ func (s *Service) Refresh(ctx context.Context, refresh string) (*Tokens, error) 
 	var revoked sql.NullTime
 	var devRevoked sql.NullTime
 	err = tx.QueryRowContext(ctx, `SELECT s.id,s.device_id,d.user_id,s.expires_at,s.revoked_at,d.revoked_at
-		FROM device_sessions s JOIN devices d ON d.id=s.device_id WHERE s.refresh_token_hash=? FOR UPDATE`, sha(refresh)).
+		FROM device_sessions s JOIN devices d ON d.id=s.device_id JOIN users u ON u.id=d.user_id WHERE s.refresh_token_hash=? AND u.disabled_at IS NULL FOR UPDATE`, sha(refresh)).
 		Scan(&sid, &did, &uid, &exp, &revoked, &devRevoked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, apiutil.ErrUnauthorized
@@ -423,8 +445,8 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 	did, _ := claims["did"].(string)
 	sid, _ := claims["sid"].(string)
 	var ok int
-	err = s.DB.QueryRowContext(ctx, `SELECT 1 FROM device_sessions s JOIN devices d ON d.id=s.device_id
-		WHERE s.id=? AND s.revoked_at IS NULL AND d.id=? AND d.user_id=? AND d.revoked_at IS NULL`, sid, did, uid).Scan(&ok)
+	err = s.DB.QueryRowContext(ctx, `SELECT 1 FROM device_sessions s JOIN devices d ON d.id=s.device_id JOIN users u ON u.id=d.user_id
+		WHERE s.id=? AND s.revoked_at IS NULL AND d.id=? AND d.user_id=? AND d.revoked_at IS NULL AND u.disabled_at IS NULL`, sid, did, uid).Scan(&ok)
 	if err != nil {
 		return nil, apiutil.ErrUnauthorized
 	}

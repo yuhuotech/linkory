@@ -125,8 +125,17 @@ func (s *Service) Create(ctx context.Context, userID uint64, sender, receiver, n
 	if sender == receiver {
 		return nil, apiutil.Err(400, "invalid_target", "cannot send to the same device")
 	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var liveUser uint64
+	if e := tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=? AND disabled_at IS NULL FOR SHARE`, userID).Scan(&liveUser); e != nil {
+		return nil, apiutil.ErrForbidden
+	}
 	var owner uint64
-	err := s.DB.QueryRowContext(ctx, `SELECT user_id FROM devices WHERE id=? AND revoked_at IS NULL`, receiver).Scan(&owner)
+	err = s.DB.QueryRowContext(ctx, `SELECT user_id FROM devices WHERE id=? AND revoked_at IS NULL`, receiver).Scan(&owner)
 	if err != nil || owner != userID {
 		return nil, apiutil.ErrNotFound
 	}
@@ -138,8 +147,11 @@ func (s *Service) Create(ctx context.Context, userID uint64, sender, receiver, n
 	if _, err := rand.Read(secret); err != nil {
 		return nil, err
 	}
-	if _, err := s.DB.ExecContext(ctx, `INSERT INTO transfer_tasks(id,user_id,sender_device_id,receiver_device_id,file_name,size,sha256,status,lan_secret) VALUES(?,?,?,?,?,?,?,?,?)`,
+	if _, err := tx.ExecContext(ctx, `INSERT INTO transfer_tasks(id,user_id,sender_device_id,receiver_device_id,file_name,size,sha256,status,lan_secret) VALUES(?,?,?,?,?,?,?,?,?)`,
 		id, userID, sender, receiver, name, size, sum, WaitingAccept, hex.EncodeToString(secret)); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 	return s.Get(ctx, id, sender)

@@ -8,14 +8,17 @@ import (
 )
 
 type Config struct {
-	Addr             string
-	MySQLDSN         string
-	AccessTokenTTL   time.Duration
-	RefreshTokenTTL  time.Duration
-	OfflineMsgTTL    time.Duration
-	MaxTransferBytes int64
-	JWTSecret        string
-	WebDir           string // optional: a Flutter web build served on every path the API does not use
+	AdminTrustedProxies []string
+	AdminDir            string
+	AdminCookieSecure   bool
+	Addr                string
+	MySQLDSN            string
+	AccessTokenTTL      time.Duration
+	RefreshTokenTTL     time.Duration
+	OfflineMsgTTL       time.Duration
+	MaxTransferBytes    int64
+	JWTSecret           string
+	WebDir              string // optional: a Flutter web build served on every path the API does not use
 	// CORSOrigins lists the page origins (https://my.example.com) allowed to call this server from a browser; empty = same origin only.
 	CORSOrigins []string
 	// WebPrefix is the URL path the web build is served under (default "/"; "/web/" keeps "/" free for a home page).
@@ -26,17 +29,20 @@ type Config struct {
 
 func Load() Config {
 	return Config{
-		Addr:             env("LINKORY_ADDR", ":8080"),
-		MySQLDSN:         env("LINKORY_MYSQL_DSN", ""),
-		AccessTokenTTL:   envDuration("LINKORY_ACCESS_TTL", 15*time.Minute),
-		RefreshTokenTTL:  envDuration("LINKORY_REFRESH_TTL", 90*24*time.Hour),
-		OfflineMsgTTL:    envDuration("LINKORY_OFFLINE_MSG_TTL", 30*24*time.Hour),
-		JWTSecret:        env("LINKORY_JWT_SECRET", ""),
-		WebDir:           env("LINKORY_WEB_DIR", ""),
-		WebPrefix:        env("LINKORY_WEB_PREFIX", "/"),
-		CORSOrigins:      envList("LINKORY_CORS_ORIGINS"),
-		WebCustomServer:  env("LINKORY_WEB_ALLOW_CUSTOM_SERVER", "") == "true",
-		MaxTransferBytes: envInt64("LINKORY_MAX_TRANSFER_BYTES", 2<<30),
+		AdminTrustedProxies: envList("LINKORY_ADMIN_TRUSTED_PROXIES"),
+		AdminDir:            env("LINKORY_ADMIN_DIR", ""),
+		AdminCookieSecure:   env("LINKORY_ADMIN_COOKIE_SECURE", "true") != "false",
+		Addr:                env("LINKORY_ADDR", ":8080"),
+		MySQLDSN:            env("LINKORY_MYSQL_DSN", ""),
+		AccessTokenTTL:      envDuration("LINKORY_ACCESS_TTL", 15*time.Minute),
+		RefreshTokenTTL:     envDuration("LINKORY_REFRESH_TTL", 90*24*time.Hour),
+		OfflineMsgTTL:       envDuration("LINKORY_OFFLINE_MSG_TTL", 30*24*time.Hour),
+		JWTSecret:           env("LINKORY_JWT_SECRET", ""),
+		WebDir:              env("LINKORY_WEB_DIR", ""),
+		WebPrefix:           env("LINKORY_WEB_PREFIX", "/"),
+		CORSOrigins:         envList("LINKORY_CORS_ORIGINS"),
+		WebCustomServer:     env("LINKORY_WEB_ALLOW_CUSTOM_SERVER", "") == "true",
+		MaxTransferBytes:    envInt64("LINKORY_MAX_TRANSFER_BYTES", 2<<30),
 	}
 }
 

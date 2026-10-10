@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/go-sql-driver/mysql"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,11 +24,15 @@ func setup(t *testing.T) http.Handler {
 	if dsn == "" {
 		t.Skip("LINKORY_TEST_DSN not set")
 	}
+	cfg, parseErr := mysql.ParseDSN(dsn)
+	if parseErr != nil || !strings.HasSuffix(cfg.DBName, "_test") {
+		t.Fatal("LINKORY_TEST_DSN 必须指向以 _test 结尾的专用测试库")
+	}
 	db, err := database.Open(dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tb := range []string{"transfer_tasks", "messages", "conversations", "device_sessions", "devices", "users", "schema_migrations"} {
+	for _, tb := range []string{"admin_jobs", "admin_previews", "admin_policy", "admin_audit", "admin_sessions", "admin_accounts", "transfer_tasks", "messages", "conversations", "device_sessions", "devices", "users", "schema_migrations"} {
 		db.Exec("DROP TABLE IF EXISTS " + tb)
 	}
 	if err := database.Migrate(db, migrations.FS); err != nil {

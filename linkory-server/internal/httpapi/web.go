@@ -49,12 +49,18 @@ func webHandler(opt Options) http.Handler {
 		connect = "'self' https: wss: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* blob:"
 	}
 	files := http.FileServer(http.Dir(dir))
+	csp := "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data: blob:; font-src 'self' data:; connect-src " + connect + "; worker-src 'self' blob:; " +
+		"object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+	if opt.StrictCSP {
+		// The admin console is plain JS talking to its own origin only: no WebAssembly, sockets, workers or forms.
+		csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+			"connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	}
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		// The page holds the account's tokens and device key: no third-party scripts, no framing.
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "+
-			"img-src 'self' data: blob:; font-src 'self' data:; connect-src "+connect+"; worker-src 'self' blob:; "+
-			"object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", csp)
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cache-Control", "no-cache") // revalidate (ETag) so a new release is picked up immediately

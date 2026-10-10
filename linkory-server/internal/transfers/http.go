@@ -433,3 +433,13 @@ func (h *Handler) finish(id string, rl *relay) {
 		delete(h.relays, id)
 	}
 }
+
+// AbortAndNotify lets administrative state changes stop an active relay and
+// send the existing full task envelope to both participants after commit.
+func (h *Handler) AbortAndNotify(id string) {
+	h.abort(id)
+	t, err := scan(h.Svc.DB.QueryRowContext(context.Background(), "SELECT "+cols+" FROM transfer_tasks WHERE id=?", id))
+	if err == nil {
+		h.notifyBoth(t, "transfer.cancel")
+	}
+}

@@ -57,6 +57,15 @@ func (s *Store) Save(ctx context.Context, userID uint64, from, to, clientID, typ
 	if from == to {
 		return nil, false, apiutil.Err(400, "invalid_target", "cannot send to the same device")
 	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback()
+	var liveUser uint64
+	if e := tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=? AND disabled_at IS NULL FOR SHARE`, userID).Scan(&liveUser); e != nil {
+		return nil, false, apiutil.ErrForbidden
+	}
 	owner, err := s.liveDeviceOwner(ctx, to)
 	if err != nil || owner != userID {
 		return nil, false, apiutil.ErrNotFound // do not reveal other accounts' devices
@@ -66,14 +75,14 @@ func (s *Store) Save(ctx context.Context, userID uint64, from, to, clientID, typ
 	}
 	lo, hi := pair(from, to)
 	convID := uuid.NewString()
-	if _, err = s.DB.ExecContext(ctx, `INSERT IGNORE INTO conversations(id,user_id,device_lo,device_hi) VALUES(?,?,?,?)`, convID, userID, lo, hi); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT IGNORE INTO conversations(id,user_id,device_lo,device_hi) VALUES(?,?,?,?)`, convID, userID, lo, hi); err != nil {
 		return nil, false, err
 	}
-	if err = s.DB.QueryRowContext(ctx, `SELECT id FROM conversations WHERE device_lo=? AND device_hi=?`, lo, hi).Scan(&convID); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM conversations WHERE device_lo=? AND device_hi=?`, lo, hi).Scan(&convID); err != nil {
 		return nil, false, err
 	}
 	id := uuid.NewString()
-	_, err = s.DB.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,client_msg_id,sender_device_id,receiver_device_id,msg_type,content) VALUES(?,?,?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(id,conversation_id,client_msg_id,sender_device_id,receiver_device_id,msg_type,content) VALUES(?,?,?,?,?,?,?)`,
 		id, convID, clientID, from, to, typ, content)
 	if err != nil {
 		if existing, e := s.byClientID(ctx, from, clientID); e == nil { // lost an idempotency race
@@ -81,7 +90,10 @@ func (s *Store) Save(ctx context.Context, userID uint64, from, to, clientID, typ
 		}
 		return nil, false, err
 	}
-	_, _ = s.DB.ExecContext(ctx, `UPDATE conversations SET updated_at=CURRENT_TIMESTAMP(3) WHERE id=?`, convID)
+	_, _ = tx.ExecContext(ctx, `UPDATE conversations SET updated_at=CURRENT_TIMESTAMP(3) WHERE id=?`, convID)
+	if err = tx.Commit(); err != nil {
+		return nil, false, err
+	}
 	m, err = s.get(ctx, id)
 	return m, false, err
 }

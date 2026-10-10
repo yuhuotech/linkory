@@ -145,3 +145,13 @@ location / { root /path/to/linkory-web; try_files $uri $uri/ =404; }
 官方主域名为 `https://linkory.yuhuotech.com`，兼容域名 `https://linkory.dev99.cn` 保留，两个域名的官网、`/web/`、API 和 WebSocket 都由同一服务处理，不把旧 API 重定向到新域名。分别使用匹配的 TLS 证书；网页版仍按当前 origin 连接，浏览器本地存储也按 origin 隔离。原生客户端识别两个地址属于同一官方服务，切换后可沿用同一账号的已有设备身份。
 
 生产脚本支持 `PROD_ALIAS_DOMAIN`、`PROD_ALIAS_CERT`、`PROD_ALIAS_KEY`（可选，证书路径未设时复用主域名证书）。主域名和兼容域名生成独立 nginx server 配置，共用路由。只更新官网的 `--site` 不会重建 nginx 域名配置；域名配置变化应执行完整部署。
+
+## 管理后台
+
+管理后台构建及使用说明见 `linkory-admin/README.md`，设计见 `ADMIN_DESIGN.md`。先运行 `npm ci && npm run build`，把 `linkory-admin/dist` 上传至例如 `/data1/www/linkory/admin`，设置 `LINKORY_ADMIN_DIR` 为该目录并重启 Go 服务。默认 Secure Cookie 要求 HTTPS；本机测试可显式设置 `LINKORY_ADMIN_COOKIE_SECURE=false`，不要用于公网。
+
+已有官网 `/` 和用户客户端 `/web/` 时，nginx 增加 `location /admin/ { proxy_pass http://127.0.0.1:8090; }` 和 `location = /admin { return 301 /admin/; }`，代理头与现有 `/api/` 相同（保留 Host、X-Forwarded-Proto）。该规则需同时出现在主域名和兼容域名的配置中；管理会话按域名隔离。
+
+服务端自动执行 `0005_admin.sql`。管理员必须在服务器执行 `linkory-server admin create --username owner --role admin` 后交互输入密码创建，没有默认密码。`readonly` 角色只读；普通用户凭据不能用于后台。生产管理员初始化是单独的运维动作，构建/部署脚本不会自动创建管理员。
+
+持久化数据保留策略默认使用初始 `LINKORY_OFFLINE_MSG_TTL` 天数，管理员修改后以数据库策略为准，离线补发与定期清理均使用该值。已送达消息与终态文件记录初始不自动过期。改策略不会立即删除数据，可先预览；自动清理每小时创建任务。后台 worker 单实例、每批 500 行，任务进度持久化。

@@ -12,5 +12,10 @@ services:
       LINKORY_ADDR: ":8080"
       LINKORY_MYSQL_DSN: ${LINKORY_MYSQL_DSN:?set LINKORY_MYSQL_DSN, host DB is reachable as host.docker.internal}
       LINKORY_JWT_SECRET: ${LINKORY_JWT_SECRET:?set LINKORY_JWT_SECRET (>= 32 bytes)}
+      LINKORY_ADMIN_DIR: ${LINKORY_ADMIN_DIR:-}
+      LINKORY_ADMIN_COOKIE_SECURE: ${LINKORY_ADMIN_COOKIE_SECURE:-true}
+      LINKORY_ADMIN_TRUSTED_PROXIES: ${LINKORY_ADMIN_TRUSTED_PROXIES:-}
+    volumes:
+      - ../linkory-admin/dist:/opt/linkory/admin:ro
     extra_hosts: ["host.docker.internal:host-gateway"]
     ports: ["${LINKORY_PORT:-8080}:8080"]

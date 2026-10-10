@@ -1,0 +1,61 @@
+ALTER TABLE users ADD COLUMN disabled_at DATETIME(3) NULL;
+CREATE TABLE IF NOT EXISTS admin_accounts (
+ id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ username VARCHAR(64) NOT NULL UNIQUE,
+ password_hash VARCHAR(255) NOT NULL,
+ role VARCHAR(16) NOT NULL,
+ disabled_at DATETIME(3) NULL,
+ created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS admin_sessions (
+ token_hash CHAR(64) NOT NULL PRIMARY KEY,
+ admin_id BIGINT UNSIGNED NOT NULL,
+ expires_at DATETIME(3) NOT NULL,
+ created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ KEY idx_admin_sessions(admin_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS admin_audit (
+ id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ actor_id BIGINT UNSIGNED NULL,
+ actor VARCHAR(64) NOT NULL,
+ action VARCHAR(64) NOT NULL,
+ target VARCHAR(128) NOT NULL DEFAULT '',
+ reason VARCHAR(500) NOT NULL DEFAULT '',
+ result VARCHAR(32) NOT NULL,
+ source_ip VARCHAR(128) NOT NULL DEFAULT '',
+ created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ KEY idx_audit_time(created_at), KEY idx_audit_action(action)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS admin_policy (
+ id INT NOT NULL PRIMARY KEY,
+ offline_days INT NOT NULL,
+ delivered_days INT NOT NULL DEFAULT 0,
+ transfer_days INT NOT NULL DEFAULT 0,
+ updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS admin_previews (
+ id CHAR(64) NOT NULL PRIMARY KEY,
+ admin_id BIGINT UNSIGNED NOT NULL,
+ spec_json JSON NOT NULL,
+ counts_json JSON NOT NULL,
+ expires_at DATETIME(3) NOT NULL,
+ consumed_at DATETIME(3) NULL
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS admin_jobs (
+ id CHAR(36) NOT NULL PRIMARY KEY,
+ actor_id BIGINT UNSIGNED NOT NULL,
+ actor VARCHAR(64) NOT NULL,
+ spec_json JSON NOT NULL,
+ counts_json JSON NOT NULL,
+ reason VARCHAR(500) NOT NULL,
+ status VARCHAR(16) NOT NULL DEFAULT 'QUEUED',
+ deleted_rows BIGINT NOT NULL DEFAULT 0,
+ error VARCHAR(500) NOT NULL DEFAULT '',
+ created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ KEY idx_jobs_status(status,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE INDEX idx_users_created ON users(created_at);
+CREATE INDEX idx_users_disabled ON users(disabled_at);
+CREATE INDEX idx_messages_created ON messages(created_at);
+CREATE INDEX idx_transfers_created ON transfer_tasks(created_at)

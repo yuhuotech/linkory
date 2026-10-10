@@ -195,3 +195,7 @@ git tag v0.1.0 && git push origin v0.1.0     # v0.1.0-rc1 这样带连字符的�
 ## 致谢
 
 界面设计系统移植自 [cc-switch](https://github.com/farion1231/cc-switch)（颜色、圆角、字号、布局节奏），并按微信式三栏布局做了适配；图标来自 [Lucide](https://lucide.dev)。
+
+## 管理后台
+
+独立的 [管理后台](linkory-admin/README.md) 提供运行概览、账号与设备管理、传输排查、数据保留任务、操作审计及管理员／只读运维权限。页面静态构建后由现有 Go 服务托管，无新增 Node 生产服务。详情见 [后台设计](docs/ADMIN_DESIGN.md)。管理员通过服务器 CLI 初始化，普通客户端账号不能登录后台。

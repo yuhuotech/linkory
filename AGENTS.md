@@ -7,6 +7,7 @@ This file provides guidance to AI coding agents (Claude Code, Codex, etc.) when 
 ## 目录
 
 - `linkory-server/` Go 模块化单体（auth / devices / messaging / transfers / httpapi）
+- `linkory-admin/` React / TypeScript / Vite 管理后台（静态构建，Go 管理 API；设计见 `docs/ADMIN_DESIGN.md`）
 - `linkory-app/` Flutter 客户端（目标五端；已构建验证 macOS、iOS）
 - `linkory-protocol/PROTOCOL.md` REST + WebSocket 协议的唯一来源；每阶段先改协议，再改服务端，再改客户端
 - `linkory-core/` Rust 核心：局域网直连协议 `LNK1` 的参考实现（客户端目前用等价的 Dart 实现，两者有互操作测试）
@@ -102,3 +103,7 @@ git tag v0.1.0 && git push origin v0.1.0
 - 需要说明原因或影响时，空一行后写正文；不兼容变更在 type 后加 `!` 并在正文写 `BREAKING CHANGE:`
 - 一次提交只做一件事；不要把无关改动混在一起
 - 不要提交 `.env.local` 及任何凭据
+
+## 管理后台
+
+`make admin-build` 构建静态页面（构建前会跑 tsc 与 vitest；单独跑前端测试用 `make admin-test`，Testing Library + 伪造 fetch，不需要服务端）；服务端 `LINKORY_ADMIN_DIR` 配置目录，在 `/admin/` 同源托管。管理 API `/api/admin/v1/` 使用独立 opaque 会话与 Cookie / CSRF，不能复用用户 JWT 或设备。管理员通过 `linkory-server admin create --username owner --role admin` 交互初始化，不提供默认密码。数据库集成测试 `TestAdmin*` 位于 `internal/httpapi/admin_test.go`，沿用 `LINKORY_TEST_DSN`，不要指向生产库。管理写操作与审计同事务，删除通过固定范围预览及持久化 worker；不能展示用户消息正文、密钥或文件内容。
