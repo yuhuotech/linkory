@@ -200,40 +200,71 @@ class LSelect<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    return Container(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: c.bgCard,
-        border: Border.all(color: c.borderStrong),
-        borderRadius: BorderRadius.circular(Radii.control),
+    final selected = options.firstWhere((option) => option.value == value);
+    return LayoutBuilder(builder: (context, box) => MenuAnchor(
+      alignmentOffset: const Offset(0, 4),
+      style: MenuStyle(
+        alignment: AlignmentDirectional.bottomStart,
+        backgroundColor: WidgetStatePropertyAll(c.bgCard),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        elevation: const WidgetStatePropertyAll(0),
+        padding: const WidgetStatePropertyAll(EdgeInsets.all(4)),
+        fixedSize: WidgetStatePropertyAll(Size.fromWidth(box.maxWidth)),
+        side: WidgetStatePropertyAll(BorderSide(color: c.borderStrong)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.control))),
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(splashFactory: NoSplash.splashFactory),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<T>(
-            value: value,
-            isExpanded: true,
-            isDense: true,
-            dropdownColor: c.bgCard,
-            borderRadius: BorderRadius.circular(Radii.control),
-            elevation: 0,
-            style: Type.body.copyWith(color: c.text1),
-            icon: Icon(LucideIcons.chevronDown, size: 16, color: c.text3),
-            onChanged: onChanged,
-            items: [
-              for (final option in options)
-                DropdownMenuItem<T>(
-                  value: option.value,
-                  enabled: option.enabled,
-                  child: Text(option.label, overflow: TextOverflow.ellipsis,
-                    style: Type.body.copyWith(color: option.enabled ? c.text1 : c.text3)),
-                ),
-            ],
+      menuChildren: [
+        for (final option in options)
+          MenuItemButton(
+            onPressed: onChanged == null || !option.enabled ? null : () => onChanged!(option.value),
+            style: ButtonStyle(
+              minimumSize: WidgetStatePropertyAll(Size(box.maxWidth - 8, 32)),
+              maximumSize: WidgetStatePropertyAll(Size(box.maxWidth - 8, 32)),
+              padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              splashFactory: NoSplash.splashFactory,
+              backgroundColor: WidgetStatePropertyAll(option.value == value ? c.bgSelected : Colors.transparent),
+              overlayColor: WidgetStateProperty.resolveWith((states) =>
+                states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)
+                  ? c.bgSubtle : Colors.transparent),
+              shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Radii.control))),
+            ),
+            trailingIcon: option.value == value
+              ? Icon(LucideIcons.check, size: 14, color: c.text2)
+              : const SizedBox(width: 14),
+            child: Text(option.label, overflow: TextOverflow.ellipsis,
+              style: Type.body.copyWith(color: option.enabled ? c.text1 : c.text3)),
           ),
+      ],
+      builder: (context, controller, child) => SizedBox(
+        height: 32,
+        width: box.maxWidth,
+        child: TextButton(
+          onPressed: onChanged == null ? null : () {
+            controller.isOpen ? controller.close() : controller.open();
+          },
+          style: ButtonStyle(
+            padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
+            minimumSize: const WidgetStatePropertyAll(Size.zero),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            splashFactory: NoSplash.splashFactory,
+            backgroundColor: WidgetStatePropertyAll(c.bgCard),
+            overlayColor: WidgetStatePropertyAll(c.bgSubtle),
+            side: WidgetStatePropertyAll(BorderSide(color: controller.isOpen ? c.action : c.borderStrong)),
+            shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Radii.control))),
+          ),
+          child: Row(children: [
+            Expanded(child: Text(selected.label, overflow: TextOverflow.ellipsis,
+              style: Type.body.copyWith(color: onChanged == null ? c.text3 : c.text1))),
+            Icon(controller.isOpen ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+              size: 16, color: c.text3),
+          ]),
         ),
       ),
-    );
+    ));
   }
 }
 

@@ -11,6 +11,7 @@ import '../../shared/format.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
 import '../guest/guest.dart';
+import '../chat/chat_view.dart';
 
 class DevicesView extends ConsumerWidget {
   const DevicesView({super.key, required this.deviceId});
@@ -41,6 +42,10 @@ class DevicesView extends ConsumerWidget {
         );
     return Column(children: [
       PageHeader(title: d.name, subtitle: d.current ? '本机' : null, actions: [
+        if (!guest && !d.current && d.id != 'local')
+          LButton(label: '发消息', icon: LucideIcons.messageSquare,
+            variant: BtnVariant.solid, compact: true,
+            onPressed: () => _message(context, ref, d)),
         LButton(label: '重命名', icon: LucideIcons.pencil, compact: true, onPressed: guest ? null : () => _rename(context, ref, d)),
         if (!d.current)
           LButton(label: '移除设备', icon: LucideIcons.trash2, compact: true, onPressed: () => _remove(context, ref, d)),
@@ -90,6 +95,22 @@ class DevicesView extends ConsumerWidget {
         ]),
       ),
     ]);
+  }
+
+  void _message(BuildContext context, WidgetRef ref, Device device) {
+    ref.read(storeProvider.notifier).openConversation(device.id);
+    if (isNarrow(context)) {
+      final route = MaterialPageRoute<void>(builder: (context) => Scaffold(
+        backgroundColor: context.c.bgApp,
+        body: SafeArea(child: ChatView(key: ValueKey(device.id), peerId: device.id)),
+      ));
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pushReplacement(route);
+      } else {
+        navigator.push(route);
+      }
+    }
   }
 
   Future<void> _rename(BuildContext context, WidgetRef ref, Device d) async {

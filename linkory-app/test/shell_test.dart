@@ -111,6 +111,40 @@ void main() {
     }
   });
 
+  testWidgets('device details open a peer conversation and exclude this device', (t) async {
+    await pumpApp(t, fixtureState(section: Section.devices));
+    expect(find.text('发消息'), findsNothing);
+    await t.tap(find.text('Pixel 9').first);
+    await t.pumpAndSettle();
+    expect(find.text('发消息'), findsOneWidget);
+    await t.tap(find.text('发消息'));
+    await t.pumpAndSettle();
+    expect(find.text('发消息'), findsNothing);
+    expect(find.byTooltip('发送剪贴板文本'), findsOneWidget);
+    await t.tap(find.byTooltip('设备管理'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Ubuntu 工作站').first);
+    await t.pumpAndSettle();
+    expect(find.text('发消息'), findsOneWidget);
+    await t.tap(find.text('发消息'));
+    await t.pumpAndSettle();
+    expect(find.byTooltip('发送剪贴板文本'), findsOneWidget);
+    expect(t.takeException(), isNull);
+
+    await pumpApp(t, fixtureState(section: Section.devices), size: const Size(390, 844));
+    await t.tap(find.text('Pixel 9').first);
+    await t.pumpAndSettle();
+    await t.tap(find.text('发消息'));
+    await t.pumpAndSettle();
+    expect(find.byTooltip('发送剪贴板文本'), findsOneWidget);
+    expect(find.text('发消息'), findsNothing);
+    await t.tap(find.byTooltip('返回'));
+    await t.pumpAndSettle();
+    expect(find.byTooltip('发送剪贴板文本'), findsNothing);
+    expect(find.text('Pixel 9'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('other sections render', (t) async {
     for (final s in [Section.devices, Section.transfers, Section.settings]) {
       await pumpApp(t, fixtureState(section: s));
@@ -193,8 +227,14 @@ void main() {
       expect(find.text('服务器地址'), findsNothing);
       final theme = brightness == Brightness.light ? 'light' : 'dark';
       await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/login_official_$theme.png'));
+      final selector = find.widgetWithText(TextButton, '连信官方');
+      final selectorBottom = t.getBottomLeft(selector).dy;
       await t.tap(find.text('连信官方'));
       await t.pumpAndSettle();
+      final customOption = find.widgetWithText(MenuItemButton, '自建服务器');
+      expect(t.getTopLeft(customOption).dy, greaterThan(selectorBottom));
+      expect(t.getSize(customOption).height, 32);
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/server_menu_$theme.png'));
       await t.tap(find.text('自建服务器').last);
       await t.pumpAndSettle();
       expect(find.text('服务器地址'), findsOneWidget);
