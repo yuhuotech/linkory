@@ -19,6 +19,9 @@ import 'session.dart';
 
 enum Section { chats, devices, transfers, settings }
 
+/// File transfer needs the local file system (browser edition: not yet).
+const canTransferFiles = !kIsWeb;
+
 class AppState {
   const AppState({
     this.devices = const [],
@@ -771,7 +774,11 @@ class AppStore extends Notifier<AppState> {
     }
     _addTransfer(t);
     if (e.type == 'transfer.offer' && t.receiver == _self && !_hiddenTasks.contains(t.id)) {
-      if (state.autoAccept) {
+      if (!canTransferFiles) {
+        // The sender must not be left waiting for an answer this device can never give.
+        unawaited(reject(t).catchError((Object _) {}));
+        _incoming(t.sender, '想发送文件：${t.fileName}（网页版暂不支持接收文件，已自动拒绝）', file: true);
+      } else if (state.autoAccept) {
         // Received on its own; the conversation is told when the file has arrived.
         unawaited(accept(t).catchError((Object err) {
           Log.warn('transfer', 'auto-accept failed: ${err.runtimeType}');

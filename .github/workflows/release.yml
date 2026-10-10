@@ -237,6 +237,32 @@ jobs:
           name: pkg-linux
           path: dist/*
 
+  # ------------------------------------------------------------------ Web
+  web:
+    name: Web build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Build (CanvasKit bundled: no gstatic dependency, works behind the GFW)
+        working-directory: linkory-app
+        run: |
+          flutter pub get
+          V="${VERSION#v}"
+          flutter build web --release --no-web-resources-cdn --dart-define=LINKORY_VERSION="$V"
+          mkdir -p ../dist
+          (cd build/web && zip -qr "../../../dist/Linkory-$V-web.zip" .)
+          ls -la ../dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-web
+          path: dist/*
+
   # ------------------------------------------------------------------ Android
   android:
     name: Android apk
@@ -280,7 +306,7 @@ jobs:
   # ------------------------------------------------------------------ publish
   release:
     name: Publish GitHub Release
-    needs: [server, windows, macos, linux, android]
+    needs: [server, windows, macos, linux, android, web]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:

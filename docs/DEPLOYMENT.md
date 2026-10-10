@@ -47,6 +47,7 @@ go run ./cmd/linkory-server        # 或 go build 后运行二进制
 | `LINKORY_REFRESH_TTL` | `720h` | refresh token 有效期 |
 | `LINKORY_OFFLINE_MSG_TTL` | `720h` | 未送达离线消息保留期 |
 | `LINKORY_MAX_TRANSFER_BYTES` | `2147483648` | 单文件大小上限（2 GiB） |
+| `LINKORY_WEB_DIR` | 空 | 网页版静态文件目录；设置后服务端在同一地址托管网页版（见下文） |
 
 > 如服务端配置项有变动，以 `linkory-server/internal/config/config.go` 为准。
 
@@ -109,3 +110,12 @@ make deploy-logs     # 最近日志
 
 首次执行会自动：创建系统用户 `linkory`、在该机 MySQL 中建库与账号（随机口令）、生成 JWT 密钥并写入 `/etc/linkory/server.env`（root:linkory 640）、安装并启用 `linkory-server.service`。之后重复执行只更新二进制并重启，不会轮换口令或密钥。该机上的客户端通过 `tools/deploy_linux_node.sh` 构建运行，`tools/cross_e2e.sh` 做跨主机联调。
 
+
+## 网页版
+
+服务端可以同时托管浏览器版客户端：把 Release 里的 `Linkory-<版本>-web.zip` 解压到某个目录，设置 `LINKORY_WEB_DIR` 指向它，重启服务端，浏览器访问服务端地址即可。网页与接口同源，不需要额外配置跨域；网页版就是账号下的又一台设备（类型“浏览器”），与各端客户端互通。
+
+- 使用反向代理时需要 HTTPS，并转发 WebSocket（`Upgrade`/`Connection` 头）。浏览器的设备身份、通知和多标签页互斥都依赖安全上下文（HTTPS 或 localhost）。
+- 同一浏览器配置文件 = 一台设备；每个账号最多保留 10 个网页设备，超出时自动清理最久未在线的，30 天未在线的也会被清理。
+- 自己构建：`cd linkory-app && flutter build web --release --no-web-resources-cdn`，产物在 `build/web`。
+- 设计与限制见 [WEB_DESIGN.md](WEB_DESIGN.md)。

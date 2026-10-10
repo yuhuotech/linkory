@@ -38,6 +38,7 @@ String deviceTypeLabel(String t) => switch (t) {
       'linux' => 'Linux',
       'android' => 'Android',
       'ios' => 'iOS',
+      'web' => '浏览器',
       _ => t,
     };
 

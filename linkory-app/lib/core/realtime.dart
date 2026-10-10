@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -56,7 +58,10 @@ class Realtime {
     try {
       // Access tokens are short-lived: make sure it is fresh before the handshake.
       await api.request('GET', '/conversations');
-      final ch = IOWebSocketChannel.connect(url, headers: api.authHeaders(), pingInterval: null);
+      // A browser cannot set headers on a WebSocket: the token goes in the subprotocol list (see PROTOCOL.md).
+      final ch = kIsWeb
+          ? WebSocketChannel.connect(url, protocols: ['linkory.v1', 'bearer.${api.tokens?.access ?? ''}'])
+          : IOWebSocketChannel.connect(url, headers: api.authHeaders(), pingInterval: null);
       _ch = ch;
       await ch.ready;
       _attempt = 0;

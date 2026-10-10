@@ -64,6 +64,10 @@ git tag v0.1.0 && git push origin v0.1.0
 
 `lib/core/updater.dart`（检查、下载、SHA-256 校验）+ `update_install.dart`（各平台安装）+ `features/update/update_ui.dart`（设置页与对话框）。每小时用 ETag 条件请求查 GitHub Releases（`/releases?per_page=15`，默认含/不含预发布取决于当前版本是否预发布），有新版本时侧栏设置按钮上方出现箭头，点击弹出对话框（立即更新 / 前往下载页 / 忽略此版本）。安装方式：macOS 解压 `…-macos.zip` 后由脱离的 shell 在本进程退出后替换 `.app` 并重开；Windows 静默运行 Inno 安装包（升级同 AppId，`[Run]` 里 `Check: WizardSilent` 负责重启应用）；Linux 用 `apt-get install ./….deb`（先 `sudo -n`，否则 `pkexec`），非 deb 安装则解压 tar.gz；Android 经 FileProvider 交给系统安装器。版本号来自 `--dart-define=LINKORY_VERSION`（CI 传 tag）；Android `versionCode` 用 `github.run_number`，必须递增。**macOS 版不再沙盒**（沙盒进程创建的文件会被强制打隔离标记，更新后的应用打不开；AppDelegate 首次启动会把旧容器里的偏好迁移出来）。**下载源**：默认 GitHub 官方；设置/对话框可切到「国内加速」，依次尝试 `gh-proxy.com`、`ghfast.top`（形如 `<镜像>/<完整 github 地址>`，仅 gh-proxy 转发 API，ghfast 失败自动换下一个），镜像列表可用 `LINKORY_UPDATE_MIRRORS` 覆盖。**安全**：第三方镜像不可信，所以 CI 用私钥（secret `UPDATE_SIGNING_KEY`，本机备份 `~/linkory-update-signing.pem`）给 `SHA256SUMS.txt` 做 Ed25519 签名并发布 `SHA256SUMS.txt.sig`，应用内置公钥（`updatePublicKeyB64`）验签后才比对安装包哈希；安装包文件名还必须以 `Linkory-<版本>-` 开头（防回滚）。换密钥需同时改应用里的公钥。本地演练：`--dart-define=LINKORY_UPDATE_API=<假 feed>` + `LINKORY_UPDATE_AUTOINSTALL=true`。
 
+## 网页版
+
+同一套 Flutter 代码的 Web 平台（设计与限制见 `docs/WEB_DESIGN.md`）。服务端设置 `LINKORY_WEB_DIR` 后在同源托管（`httpapi/web.go`：CSP、gzip、SPA 回退），网页版是账号下设备类型为 `web` 的又一台设备。浏览器相关能力集中在 `lib/core/web/browser.dart`（条件导入，非 Web 平台是空实现）：设备名、通知、可见性、标签页锁；`tab_gate.dart` 保证同一浏览器只有一个标签页连服务端。构建：`flutter build web --release --no-web-resources-cdn`（CanvasKit 随包发布，中文字体在 `web/fonts/` 启动时加载，国内不依赖 gstatic）。WebSocket 在浏览器里不能带 header，令牌走子协议 `bearer.<token>`。新增依赖 `dart:io` 的功能前先看网页版能否运行：用 `kIsWeb` 或 `canTransferFiles` 保护，不要让网页版崩溃。生产部署：`tools/deploy_prod.sh` 会连同网页版一起构建上传。
+
 ## UI 规范（强制，完整版见 [`docs/UI_SPEC.md`](docs/UI_SPEC.md)）
 
 视觉完整复刻 cc-switch（v7 设计系统），唯一差异是布局改为微信式三栏。**写任何 Flutter UI 前先读 `docs/UI_SPEC.md`。**

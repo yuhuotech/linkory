@@ -65,27 +65,37 @@ class _LoginCardState extends ConsumerState<LoginCard> {
     for (final server in servers) {
       if (server.url == _server.text) _officialUrl = server.url;
     }
-    if (servers.isNotEmpty && !ref.read(prefsProvider).containsKey('server_url') &&
+    if (servers.isNotEmpty &&
+        !ref.read(prefsProvider).containsKey('server_url') &&
         !const bool.hasEnvironment('LINKORY_DEFAULT_SERVER')) {
       _officialUrl = servers.first.url;
     }
   }
+
   bool _busy = false;
   String? _error;
 
   Future<void> _submit() async {
     if (_busy) return;
-    final server = (_officialUrl ?? _server.text).trim();
+    final server = serverIsFixed
+        ? defaultServer
+        : (_officialUrl ?? _server.text).trim();
     final uri = Uri.tryParse(server);
-    if (uri == null || !['http', 'https'].contains(uri.scheme) ||
-        uri.host.isEmpty || uri.userInfo.isNotEmpty || uri.hasQuery || uri.hasFragment) {
+    if (uri == null ||
+        !['http', 'https'].contains(uri.scheme) ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment) {
       setState(() => _error = '请输入完整的服务器地址，例如 https://linkory.example.com');
       return;
     }
-    if (_register && (_confirmPass.text.isEmpty || _pass.text != _confirmPass.text)) {
-      setState(() => _error = _confirmPass.text.isEmpty
-          ? '请再次输入密码'
-          : '两次输入的密码不一致，请重新确认');
+    if (_register &&
+        (_confirmPass.text.isEmpty || _pass.text != _confirmPass.text)) {
+      setState(
+        () =>
+            _error = _confirmPass.text.isEmpty ? '请再次输入密码' : '两次输入的密码不一致，请重新确认',
+      );
       _confirmFocus.requestFocus();
       return;
     }
@@ -166,42 +176,55 @@ class _LoginCardState extends ConsumerState<LoginCard> {
             ),
             const SizedBox(height: 4),
             Text('跨越距离，自由传递。', style: Type.body.copyWith(color: c.text3)),
-            label('服务器'),
-            LSelect<String>(
-              value: _officialUrl ?? 'custom',
-              options: [
-                if (servers.isEmpty)
-                  const LSelectOption('unavailable', '官方中转服务（暂未开放）', enabled: false),
-                for (final server in servers)
-                  LSelectOption(server.url, server.name),
-                const LSelectOption('custom', '自建服务器'),
-              ],
-              onChanged: _busy ? null : (value) => setState(() {
-                _officialUrl = value == 'custom' ? null : value;
-                _error = null;
-              }),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _officialUrl != null
-                  ? '使用官方中转服务，无需部署或填写地址。'
-                  : '连接你或管理员部署的连信服务，请填写完整地址。',
-              style: Type.caption.copyWith(color: c.text3),
-            ),
-            if (_officialUrl == null) ...[
-              label('服务器地址'),
-              LTextField(
-                controller: _server,
-                hint: 'https://linkory.example.com',
-                prefix: Icon(LucideIcons.server, size: 14, color: c.text3),
+            // The browser edition is served by its own server: nothing to choose.
+            if (!serverIsFixed) ...[
+              label('服务器'),
+              LSelect<String>(
+                value: _officialUrl ?? 'custom',
+                options: [
+                  if (servers.isEmpty)
+                    const LSelectOption(
+                      'unavailable',
+                      '官方中转服务（暂未开放）',
+                      enabled: false,
+                    ),
+                  for (final server in servers)
+                    LSelectOption(server.url, server.name),
+                  const LSelectOption('custom', '自建服务器'),
+                ],
+                onChanged: _busy
+                    ? null
+                    : (value) => setState(() {
+                        _officialUrl = value == 'custom' ? null : value;
+                        _error = null;
+                      }),
               ),
               const SizedBox(height: 8),
-              Text('包含 http:// 或 https://，如有端口也需填写。',
-                style: Type.caption.copyWith(color: c.text3)),
+              Text(
+                _officialUrl != null
+                    ? '使用官方中转服务，无需部署或填写地址。'
+                    : '连接你或管理员部署的连信服务，请填写完整地址。',
+                style: Type.caption.copyWith(color: c.text3),
+              ),
+              if (_officialUrl == null) ...[
+                label('服务器地址'),
+                LTextField(
+                  controller: _server,
+                  hint: 'https://linkory.example.com',
+                  prefix: Icon(LucideIcons.server, size: 14, color: c.text3),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '包含 http:// 或 https://，如有端口也需填写。',
+                  style: Type.caption.copyWith(color: c.text3),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Text(
+                '所有设备请选择同一服务器；不同服务器的账号不互通。',
+                style: Type.caption.copyWith(color: c.text3),
+              ),
             ],
-            const SizedBox(height: 8),
-            Text('所有设备请选择同一服务器；不同服务器的账号不互通。',
-              style: Type.caption.copyWith(color: c.text3)),
             label('用户名'),
             LTextField(controller: _user, hint: '3-32 个字符', autofocus: true),
             label('密码'),
@@ -209,7 +232,8 @@ class _LoginCardState extends ConsumerState<LoginCard> {
               controller: _pass,
               hint: '至少 8 位',
               obscure: true,
-              onSubmitted: (_) => _register ? _confirmFocus.requestFocus() : _submit(),
+              onSubmitted: (_) =>
+                  _register ? _confirmFocus.requestFocus() : _submit(),
             ),
             if (_register) ...[
               label('确认密码'),

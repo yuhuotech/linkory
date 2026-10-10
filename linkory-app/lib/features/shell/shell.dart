@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -523,7 +524,7 @@ class _SettingsList extends ConsumerWidget {
     final c = context.c;
     final cur = ref.watch(settingsTabProvider);
     return ListView(padding: const EdgeInsets.symmetric(horizontal: 8), children: [
-      for (final t in SettingsTab.values)
+      for (final t in SettingsTab.values.where((t) => !kIsWeb || (t != SettingsTab.transfer && t != SettingsTab.update)))
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 1),
           child: HoverRow(

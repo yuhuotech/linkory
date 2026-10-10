@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,10 +11,13 @@ import '../core/desktop.dart';
 import '../core/notifications.dart';
 import '../core/session.dart';
 import '../core/store.dart';
+import '../core/tab_gate.dart';
+import '../core/web/browser.dart';
 import '../core/updater.dart';
 import '../shared/close_dialog.dart';
 import '../shared/rounded_window.dart';
 import '../features/shell/shell.dart';
+import '../shared/tab_blocked.dart';
 import '../theme/tokens.dart';
 
 class LinkoryApp extends ConsumerWidget {
@@ -60,7 +64,7 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Phones: "active" means the app is in the foreground. (Desktop windows report focus themselves.)
-    if (Platform.isAndroid || Platform.isIOS) ref.read(appActiveProvider.notifier).set(state == AppLifecycleState.resumed);
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) ref.read(appActiveProvider.notifier).set(state == AppLifecycleState.resumed);
   }
 
   @override
@@ -81,16 +85,43 @@ class _RootState extends ConsumerState<_Root> with WidgetsBindingObserver {
       unawaited(DesktopShell.instance?.showWindow());
       unawaited(_store.openConversation(peerId));
     };
-    if (ref.read(sessionProvider).status == AuthStatus.loggedIn) _connect();
-    // Hourly update check; works signed out too (the first one waits a moment after launch).
-    Future.microtask(() => ref.read(updateProvider.notifier).start());
     ref.listenManual(sessionProvider.select((s) => s.status), (prev, s) {
-      if (s == AuthStatus.loggedIn && prev != AuthStatus.loggedIn) _connect();
+      if (s == AuthStatus.loggedIn && prev != AuthStatus.loggedIn && ref.read(tabGateProvider) == TabState.active) _connect();
     });
+    if (kIsWeb) {
+      // The page is "active" while visible and focused; only one tab may run the session.
+      browserWatchActive((a) => ref.read(appActiveProvider.notifier).set(a));
+      unawaited(ref.read(tabGateProvider.notifier).acquire(onLost: _store.stop).then((ok) {
+        if (ok) _boot();
+      }));
+      return;
+    }
+    _boot();
   }
 
+  void _boot() {
+    if (ref.read(sessionProvider).status == AuthStatus.loggedIn) _connect();
+    // Hourly update check; works signed out too (the first one waits a moment after launch).
+    if (!kIsWeb) Future.microtask(() => ref.read(updateProvider.notifier).start());
+  }
+
+  bool _askedNotify = false;
+
   @override
-  Widget build(BuildContext context) => const Shell();
+  Widget build(BuildContext context) {
+    if (kIsWeb && ref.watch(tabGateProvider) == TabState.blocked) return const TabBlockedPage();
+    final shell = const Shell();
+    if (!kIsWeb) return shell;
+    // Browsers only let a page ask for notification permission from a user gesture: use the first click.
+    return Listener(
+      onPointerDown: (_) {
+        if (_askedNotify || ref.read(sessionProvider).status != AuthStatus.loggedIn) return;
+        _askedNotify = true;
+        if (ref.read(storeProvider.select((s) => s.notifyEnabled))) unawaited(browserNotifyRequest());
+      },
+      child: shell,
+    );
+  }
 }
 
 typedef StoreRef = AppStore;

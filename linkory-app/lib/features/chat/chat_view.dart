@@ -213,6 +213,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
       ),
     ]);
 
+    if (!canTransferFiles) return body;
     // PRD FILE-010: drop files anywhere on the conversation.
     return DropTarget(
       onDragEntered: (_) => setState(() => _dragging = true),
@@ -274,7 +275,7 @@ class _Composer extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
             child: Row(children: [
               LIconButton(icon: LucideIcons.clipboardPaste, tooltip: '发送剪贴板文本', onPressed: enabled ? onClipboard : null),
-              LIconButton(icon: LucideIcons.folderOpen, tooltip: online ? '发送文件' : '对方离线，暂不支持离线文件', onPressed: enabled ? onFile : null),
+              LIconButton(icon: LucideIcons.folderOpen, tooltip: !canTransferFiles ? '网页版暂不支持发送文件' : online ? '发送文件' : '对方离线，暂不支持离线文件', onPressed: enabled && canTransferFiles ? onFile : null),
               const Spacer(),
               if (!online) Text('对方离线：文字消息将在其上线后送达', style: Type.caption.copyWith(color: c.text3)),
             ]),
@@ -347,11 +348,13 @@ class _EmptyConversation extends StatelessWidget {
           const SizedBox(height: 10),
           LBadge(online ? '在线' : '离线', bg: online ? c.successSoft : c.bgSubtle, fg: online ? c.successText : c.text2),
           const SizedBox(height: 18),
-          Text('还没有消息。发送文字，或者把文件拖到这里。', style: Type.body.copyWith(color: c.text3)),
+          Text(canTransferFiles ? '还没有消息。发送文字，或者把文件拖到这里。' : '还没有消息。发送一段文字试试。', style: Type.body.copyWith(color: c.text3)),
           const SizedBox(height: 14),
           Row(mainAxisSize: MainAxisSize.min, children: [
-            LButton(label: '发送文件', icon: LucideIcons.folderOpen, onPressed: onFile),
-            const SizedBox(width: 8),
+            if (canTransferFiles) ...[
+              LButton(label: '发送文件', icon: LucideIcons.folderOpen, onPressed: onFile),
+              const SizedBox(width: 8),
+            ],
             LButton(label: '发送剪贴板', icon: LucideIcons.clipboardPaste, onPressed: onClipboard),
           ]),
         ]),

@@ -12,15 +12,23 @@ import 'api.dart';
 import 'models.dart';
 import 'version.dart';
 import 'secrets.dart';
+import 'web/browser.dart';
 
 /// Pre-filled server address. `make app-run` points it at the shared LAN test server via
 /// --dart-define=LINKORY_DEFAULT_SERVER; release builds leave it to the user.
-const defaultServer = String.fromEnvironment('LINKORY_DEFAULT_SERVER', defaultValue: 'http://127.0.0.1:8090');
+const _configuredServer = String.fromEnvironment('LINKORY_DEFAULT_SERVER', defaultValue: 'http://127.0.0.1:8090');
+
+/// The browser edition is served by the server itself, so it always talks to the origin that served it
+/// (LINKORY_DEFAULT_SERVER overrides this for development against another server).
+String get defaultServer => kIsWeb && !const bool.hasEnvironment('LINKORY_DEFAULT_SERVER') ? browserOrigin() : _configuredServer;
+
+/// True when the server address is not the user's choice (browser edition): the sign-in form hides it.
+bool get serverIsFixed => kIsWeb;
 
 enum AuthStatus { loading, loggedOut, loggedIn }
 
 class SessionState {
-  const SessionState({this.status = AuthStatus.loading, this.serverUrl = defaultServer, this.username = '', this.deviceId = ''});
+  SessionState({this.status = AuthStatus.loading, String? serverUrl, this.username = '', this.deviceId = ''}) : serverUrl = serverUrl ?? defaultServer;
   final AuthStatus status;
   final String serverUrl, username, deviceId;
   SessionState copyWith({AuthStatus? status, String? serverUrl, String? username, String? deviceId}) => SessionState(
@@ -59,7 +67,7 @@ class SessionController extends Notifier<SessionState> {
     final loggedIn = refresh != null && _p.getString('device_id') != null;
     return SessionState(
       status: loggedIn ? AuthStatus.loggedIn : AuthStatus.loggedOut,
-      serverUrl: _p.getString('server_url') ?? defaultServer,
+      serverUrl: serverIsFixed ? defaultServer : (_p.getString('server_url') ?? defaultServer),
       username: _p.getString('username') ?? '',
       deviceId: _p.getString('device_id') ?? '',
     );
@@ -152,7 +160,7 @@ class SessionController extends Notifier<SessionState> {
 
 /// Platform identity helpers (also used to describe this device before sign-in).
 String deviceTypeName() {
-  if (kIsWeb) return 'linux';
+  if (kIsWeb) return 'web';
   return switch (defaultTargetPlatform) {
     TargetPlatform.macOS => 'macos',
     TargetPlatform.windows => 'windows',
@@ -163,7 +171,7 @@ String deviceTypeName() {
 }
 
 Future<String> deviceDisplayName() async {
-  if (kIsWeb) return 'Web 浏览器';
+  if (kIsWeb) return browserLabel();
   try {
     // Phones report "localhost" as hostname; use the model name there.
     if (Platform.isAndroid) {
@@ -182,7 +190,7 @@ Future<String> deviceDisplayName() async {
 }
 
 String osVersionString() {
-  if (kIsWeb) return 'web';
+  if (kIsWeb) return '';
   try {
     final v = Platform.operatingSystemVersion;
     return v.length > 60 ? '${v.substring(0, 60)}…' : v;

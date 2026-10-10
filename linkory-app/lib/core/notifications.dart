@@ -6,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'log.dart';
+import 'web/browser.dart';
 
 /// Is the user looking at the app right now? Desktop: the window is visible, not minimised and
 /// focused. Mobile: the app is in the foreground. Drives whether a new message raises a system
@@ -121,4 +122,18 @@ class MobileMacNotifier implements SystemNotifier {
 
   @override
   Future<void> setUnread(int total) async => _inner?.setUnread(total);
+}
+
+
+/// Browser edition: notifications through the Notification API and the unread count in the tab title. Both only
+/// work while the page is open (there is no push channel), and notifications need the user's permission.
+class WebNotifier implements SystemNotifier {
+  static const _title = '连信 Linkory';
+  @override
+  Future<void> show({required String peerId, required String title, required String body, required int count}) async =>
+      browserNotifyShow(tag: peerId, title: title, body: body, onClick: () => onNotificationTap?.call(peerId));
+  @override
+  Future<void> clear(String peerId) async => browserNotifyClose(peerId);
+  @override
+  Future<void> setUnread(int total) async => browserSetTitle(total > 0 ? '($total) $_title' : _title);
 }

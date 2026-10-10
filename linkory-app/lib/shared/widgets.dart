@@ -362,6 +362,7 @@ class DeviceGlyph extends StatelessWidget {
   static IconData iconFor(String type) => switch (type) {
         'android' || 'ios' => LucideIcons.smartphone,
         'linux' => LucideIcons.terminal,
+        'web' => LucideIcons.globe,
         'macos' => LucideIcons.laptop,
         _ => LucideIcons.monitor,
       };

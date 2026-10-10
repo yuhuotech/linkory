@@ -149,6 +149,7 @@ class Radii {
 /// Type scale (tailwind fontSize): size / line-height / weight.
 class Type {
   static const fontFamilyFallback = [
+    'NotoSansSC', // web only: bundled, see web/fonts/README.md
     '.AppleSystemUIFont',
     'PingFang SC',
     'Hiragino Sans GB',
