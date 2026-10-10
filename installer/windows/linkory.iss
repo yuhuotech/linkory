@@ -25,7 +25,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 WizardStyle=modern
-CloseApplications=yes
+; Not the Restart Manager: it asks the window to close, and our window hides to the tray instead of exiting, so setup hung on "Closing applications".
+; The app is ended in [Code] below instead.
+CloseApplications=no
 RestartApplications=no
 
 [Tasks]
@@ -42,3 +44,26 @@ Name: "{autodesktop}\连信 Linkory"; Filename: "{app}\linkory_app.exe"; Tasks: 
 Filename: "{app}\linkory_app.exe"; Description: "启动连信 Linkory"; Flags: nowait postinstall skipifsilent
 ; Silent installs are in-app updates: start the new version again when done.
 Filename: "{app}\linkory_app.exe"; Flags: nowait; Check: WizardSilent
+
+[Code]
+// The app keeps running in the tray after its window is closed, so ask it to quit by ending the process.
+// (Ends only this user's instance; any chat state is already on disk or on the server.)
+procedure StopApp();
+var
+  rc: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM linkory_app.exe', '', SW_HIDE, ewWaitUntilTerminated, rc);
+  Sleep(500); // let Windows release the file handles
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  StopApp();
+  Result := '';
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  StopApp();
+  Result := True;
+end;
