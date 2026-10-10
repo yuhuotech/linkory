@@ -23,6 +23,11 @@ core-build:
 e2e:
 	cd linkory-app && LINKORY_E2E_URL=$${LINKORY_E2E_URL:-http://127.0.0.1:8090} flutter test test/e2e_test.dart
 
+.PHONY: web-run
+# 本机运行网页版（服务端托管网页并打开浏览器，Ctrl+C 停止）：make web-run
+web-run:
+	tools/web_run.sh
+
 .PHONY: app-run
 # 按当前系统自动选桌面目标；默认服务器为局域网测试端点（tools/deploy.env）
 # 跑别的设备：make app-run DEVICE=emulator-5554；连本机服务端：LINKORY_SERVER=http://127.0.0.1:8090 make app-run

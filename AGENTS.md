@@ -29,6 +29,7 @@ make core-test && make core-build   # Rust；互操作测试 test/lan_test.dart 
 make e2e                            # 双客户端对真实服务端（先 make server-run）；LINKORY_E2E_BIG_MB=1024 加测大文件
 # 真实窗口集成测试（会启动 macOS 应用并把截图写到沙盒 tmp，路径见输出 "SHOTS ..."）
 cd linkory-app && flutter test integration_test/app_test.dart -d macos --dart-define=LINKORY_E2E_URL=http://127.0.0.1:8090
+make web-run                         # 本机运行网页版并打开浏览器（见 tools/web_run.sh）
 make app-macos-dmg                  # 打包 .dmg（设置 SIGN_IDENTITY 与 NOTARY_* 环境变量后签名并公证，见 tools/package_macos.sh）
 
 # 局域网测试服务器（配置在 tools/deploy.env，该文件被 git 忽略，样例见 tools/deploy.env.example；需要免密 ssh 与免密 sudo）
