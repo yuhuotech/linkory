@@ -129,7 +129,7 @@ make deploy-logs     # 最近日志
 
 ### 官网放根目录、网页版放 `/web/`
 
-官方部署（`linkory.dev99.cn`）的做法：nginx 把根目录指向官网静态文件（仓库里的 `linkory-web/`），`/api/`、`/healthz`、`/readyz` 和网页版前缀转给服务端：
+官方部署（`linkory.yuhuotech.com`）的做法：nginx 把根目录指向官网静态文件（仓库里的 `linkory-web/`），`/api/`、`/healthz`、`/readyz` 和网页版前缀转给服务端：
 
 ```nginx
 location /api/ { proxy_pass http://127.0.0.1:8090; ... }   # 同时转发 WebSocket，文件中转不限大小、不缓冲
@@ -139,3 +139,9 @@ location / { root /path/to/linkory-web; try_files $uri $uri/ =404; }
 ```
 
 客户端里填的服务器地址仍是域名本身，不受影响。前缀可以随意配置（`/web/`、`/app/` 或根目录），只要 nginx 的 location 与 `LINKORY_WEB_PREFIX` 一致。
+
+### 官方主域名与兼容域名
+
+官方主域名为 `https://linkory.yuhuotech.com`，兼容域名 `https://linkory.dev99.cn` 保留，两个域名的官网、`/web/`、API 和 WebSocket 都由同一服务处理，不把旧 API 重定向到新域名。分别使用匹配的 TLS 证书；网页版仍按当前 origin 连接，浏览器本地存储也按 origin 隔离。原生客户端识别两个地址属于同一官方服务，切换后可沿用同一账号的已有设备身份。
+
+生产脚本支持 `PROD_ALIAS_DOMAIN`、`PROD_ALIAS_CERT`、`PROD_ALIAS_KEY`（可选，证书路径未设时复用主域名证书）。主域名和兼容域名生成独立 nginx server 配置，共用路由。只更新官网的 `--site` 不会重建 nginx 域名配置；域名配置变化应执行完整部署。

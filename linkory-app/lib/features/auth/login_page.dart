@@ -66,7 +66,7 @@ class _LoginCardState extends ConsumerState<LoginCard> {
     super.initState();
     final servers = ref.read(officialServersProvider);
     for (final server in servers) {
-      if (server.url == _server.text || (kIsWeb && server.url == ref.read(sessionProvider).serverUrl)) _officialUrl = server.url;
+      if (server.matches(_server.text) || (kIsWeb && server.url == ref.read(sessionProvider).serverUrl)) _officialUrl = server.url;
     }
     if (servers.isNotEmpty &&
         !ref.read(prefsProvider).containsKey('server_url') &&

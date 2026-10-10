@@ -208,7 +208,7 @@ macOS AppIcon 同时用于 Finder、Dock 与系统应用入口；菜单栏使用
 
 ## 19. 登录与注册的服务器选择
 
-- 官方服务默认名称「连信官方」、地址 `https://linkory.dev99.cn`（接入配置已就绪，服务端由部署方另行开通）；首次使用默认选择官方服务，无需用户填写地址。可用 `LINKORY_OFFICIAL_SERVER` / `LINKORY_OFFICIAL_SERVER_NAME` 构建参数覆盖，地址设为空时官方选项禁用。
+- 官方服务默认名称「连信官方」、地址 `https://linkory.yuhuotech.com`（主域名；兼容地址 `https://linkory.dev99.cn` 保留为同一服务）；首次使用默认选择官方服务，无需用户填写地址。可用 `LINKORY_OFFICIAL_SERVER` / `LINKORY_OFFICIAL_SERVER_NAME` 构建参数覆盖，地址设为空时官方选项禁用。
 - 已保存的服务器优先恢复；开发构建显式指定 `LINKORY_DEFAULT_SERVER` 时保留开发地址。官方地址匹配则选中官方项，其余进入自建模式。
 - 自建模式显示「服务器地址」与 http/https、端口说明，提交前检查完整 HTTP(S) URL。切换服务不会丢失本次输入的自建地址。
 - 所有设备需连接同一服务器，不同服务器的账号不互通；此说明在登录和注册两种模式均可见。

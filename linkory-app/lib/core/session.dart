@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'models.dart';
 import 'version.dart';
+import 'server_options.dart';
 import 'secrets.dart';
 import 'web/browser.dart';
 import 'web/web_config.dart';
@@ -93,7 +94,7 @@ class SessionController extends Notifier<SessionState> {
       'password': password,
       'device': {
         // Reuse the device identity only for the same server+account; otherwise register anew.
-        if (_p.getString('device_server') == api.baseUrl && _p.getString('username') == username)
+        if (sameServerIdentity(_p.getString('device_server') ?? '', api.baseUrl) && _p.getString('username') == username)
           'device_id': _p.getString('device_id'),
         'name': await deviceDisplayName(),
         'type': deviceTypeName(),
