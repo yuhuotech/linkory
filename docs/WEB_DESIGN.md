@@ -35,6 +35,7 @@
   | 文件发送 | 本地路径流式读取 | 浏览器文件选择/拖拽，分块计算 SHA-256 后用 XHR 以 Blob 直接上传（文件留在浏览器里，不读入内存） |
   | 文件接收 | 写入下载目录 | 点「接收」时弹出另存为（File System Access API，Chromium）并边收边写；其他浏览器先在内存中拼成 Blob 再下载，上限 1 GB。边收边校验 SHA-256，校验失败不会交给用户。不支持自动接收（保存对话框需要用户点击） |
   | 局域网直连、托盘、更新、开机启动 | 有 | 无（界面隐藏） |
+- **路径前缀可配置**：`LINKORY_WEB_PREFIX`（默认 `/`）决定网页版挂在哪个路径，如 `/web/`，这样站点根目录可以留给官网。网页构建一次，服务端返回 `index.html` 时把 `<base href>` 改写成前缀（应用所有资源都相对它加载）；接口始终在 `/api/v1`，不受前缀影响。官方服务器：根目录是官网（nginx 托管 `linkory-web/`），网页版在 `/web/`。
 - **同源部署**：服务端新增 `LINKORY_WEB_DIR`，设置后在未匹配的路径上托管网页静态文件（带 CSP 等安全头）。浏览器始终访问页面所在源，无需 CORS，WebSocket 的 Origin 校验天然通过。`my.linkory.cn` 与现有域名指向同一个服务端进程，账号互通。
 - 默认情况下网页端服务器地址固定为 `Uri.base.origin`，登录页不显示地址输入。
 - **可选：连接自建服务器**。托管网页的服务端设置 `LINKORY_WEB_ALLOW_CUSTOM_SERVER=true` 后（页面从 `/web-config.json` 读到），登录页出现“本站服务 / 自建服务器”选择。限制：自建服务器必须是 HTTPS（浏览器禁止 HTTPS 页面访问 http:// 的混合内容；本机 localhost/127.0.0.1 例外），且自建服务端要在 `LINKORY_CORS_ORIGINS` 里允许托管页面的来源（该配置同时放行 WebSocket 的来源校验）。此时页面的 CSP `connect-src` 放宽为 `'self' https: wss:` 加本机地址；因此只在需要时开启，默认关闭。令牌仍用 Authorization 头，不用 Cookie（跨站 Cookie 会被浏览器拦截），所以第 3 阶段的 Cookie 方案只适用于同源模式。
