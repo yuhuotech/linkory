@@ -46,7 +46,7 @@
 
 | 平台 | 状态 | 说明 |
 |---|---|---|
-| macOS（Apple 芯片） | ✅ 已验证 | `.dmg`（未签名，首次需右键打开） |
+| macOS（Apple 芯片） | ✅ 已验证 | `.dmg`（已签名并公证，直接打开） |
 | Linux（x64） | ✅ 已验证 | `.deb` / `.tar.gz`，在 Ubuntu 26.04（GNOME）上实机运行 |
 | Android | ✅ 已验证 | `.apk`，在 Android 15 模拟器上验证 |
 | Windows（x64） | 🟡 CI 构建通过 | 安装程序 / 便携 zip；欢迎实机反馈 |

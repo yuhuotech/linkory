@@ -167,7 +167,30 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - name: Build + dmg (unsigned)
+      # Developer ID signing + notarization when the secrets exist (forks without them get an unsigned build).
+      - name: Import signing certificate
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          [ -n "$MACOS_CERT_P12" ] || { echo "no signing certificate: unsigned build"; exit 0; }
+          kc="$RUNNER_TEMP/build.keychain-db"; pw=$(openssl rand -hex 16)
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pw" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" login.keychain
+          id=$(security find-identity -v -p codesigning "$kc" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          [ -n "$id" ] || { echo "no Developer ID Application identity in the p12" >&2; exit 1; }
+          echo "SIGN_IDENTITY=$id" >> "$GITHUB_ENV"
+      - name: Build + sign + notarize dmg
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           V="${VERSION#v}"
           VERSION="$V" BUILD_ARGS="--dart-define=LINKORY_VERSION=$V" tools/package_macos.sh

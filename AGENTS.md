@@ -29,7 +29,7 @@ make core-test && make core-build   # Rust；互操作测试 test/lan_test.dart 
 make e2e                            # 双客户端对真实服务端（先 make server-run）；LINKORY_E2E_BIG_MB=1024 加测大文件
 # 真实窗口集成测试（会启动 macOS 应用并把截图写到沙盒 tmp，路径见输出 "SHOTS ..."）
 cd linkory-app && flutter test integration_test/app_test.dart -d macos --dart-define=LINKORY_E2E_URL=http://127.0.0.1:8090
-make app-macos-dmg                  # 打包 .dmg（未签名）
+make app-macos-dmg                  # 打包 .dmg（设置 SIGN_IDENTITY 与 NOTARY_* 环境变量后签名并公证，见 tools/package_macos.sh）
 
 # 局域网测试服务器（配置在 tools/deploy.env，该文件被 git 忽略，样例见 tools/deploy.env.example；需要免密 ssh 与免密 sudo）
 make deploy                         # 构建 linux/amd64 服务端并部署重启（首次自动建库建账号、生成 JWT 密钥，systemd 服务 linkory-server）
@@ -54,7 +54,7 @@ tools/cross_e2e.sh                  # 跨主机联调：本机 ↔ 服务器上�
 
 ## 发布（GitHub Actions）
 
-推送 tag（`v0.1.0`；带 `-` 的如 `v0.1.0-rc1` 会标为预发布）触发 `.github/workflows/release.yml`：先跑 Go（真实 MySQL）/ Rust / Flutter 测试，通过后并行构建 Windows 安装程序（Inno Setup + 便携 zip）、macOS dmg（未签名）、Linux deb + tar.gz、Android apk（测试签名）、服务端多平台二进制，最后汇总 `SHA256SUMS.txt` 发布到 Release。也可在 Actions 页手动运行（`workflow_dispatch`，只产出构建产物，不发布）。CI 里 `CI=true` 时 golden 像素比较被放行（`test/flutter_test_config.dart`），像素检查只在本机做。iOS 需要 Apple 签名，暂无。
+推送 tag（`v0.1.0`；带 `-` 的如 `v0.1.0-rc1` 会标为预发布）触发 `.github/workflows/release.yml`：先跑 Go（真实 MySQL）/ Rust / Flutter 测试，通过后并行构建 Windows 安装程序（Inno Setup + 便携 zip）、macOS dmg（Developer ID 签名 + 公证，需要仓库 Secrets：MACOS_CERT_P12、MACOS_CERT_PASSWORD、APPLE_ID、APPLE_TEAM_ID、APPLE_APP_PASSWORD；缺失时退回未签名）、Linux deb + tar.gz、Android apk（测试签名）、服务端多平台二进制，最后汇总 `SHA256SUMS.txt` 发布到 Release。也可在 Actions 页手动运行（`workflow_dispatch`，只产出构建产物，不发布）。CI 里 `CI=true` 时 golden 像素比较被放行（`test/flutter_test_config.dart`），像素检查只在本机做。iOS 需要 Apple 签名，暂无。
 
 ```sh
 git tag v0.1.0 && git push origin v0.1.0

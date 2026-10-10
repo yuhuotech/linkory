@@ -24,3 +24,6 @@ local.properties
 __pycache__/
 *.pyc
 
+
+# 生产部署脚本与配置（个人，不提交）
+tools/deploy_prod.sh

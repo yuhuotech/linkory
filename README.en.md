@@ -41,7 +41,7 @@ Get installers from [Releases](https://github.com/yuhuotech/linkory/releases) (v
 
 | Platform | Status | File |
 |---|---|---|
-| macOS (Apple silicon) | ✅ verified | `.dmg` (unsigned: right-click → Open the first time) |
+| macOS (Apple silicon) | ✅ verified | `.dmg` (signed and notarized: opens without warnings) |
 | Linux x64 | ✅ verified | `.deb` (`sudo apt install ./Linkory-*.deb`) or `.tar.gz` |
 | Android | ✅ verified (emulator) | `.apk` |
 | Windows x64 | 🟡 built in CI | installer `.exe` or portable `.zip` — feedback welcome |
