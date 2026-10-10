@@ -43,7 +43,7 @@ func newID() string {
 
 func (h *Handler) serveWS(w http.ResponseWriter, r *http.Request) {
 	p := auth.PrincipalFrom(r.Context())
-	conn, err := websocket.Accept(w, r, nil)
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"linkory.v1"}})
 	if err != nil {
 		return
 	}

@@ -69,7 +69,7 @@ type Principal struct {
 	SessionID string
 }
 
-var validTypes = map[string]bool{"windows": true, "macos": true, "linux": true, "android": true, "ios": true}
+var validTypes = map[string]bool{"windows": true, "macos": true, "linux": true, "android": true, "ios": true, "web": true}
 
 func (s *Service) Register(ctx context.Context, username, password string) (uint64, error) {
 	username = strings.TrimSpace(username)
@@ -133,7 +133,7 @@ func (s *Service) ensureDevice(ctx context.Context, uid uint64, d DeviceInfo) (s
 	}
 	d.Type = strings.ToLower(d.Type)
 	if !validTypes[d.Type] {
-		return "", apiutil.Err(400, "invalid_device_type", "device type must be windows|macos|linux|android|ios")
+		return "", apiutil.Err(400, "invalid_device_type", "device type must be windows|macos|linux|android|ios|web")
 	}
 	if d.PublicKey == "" || len(d.PublicKey) > 128 {
 		return "", apiutil.Err(400, "invalid_public_key", "public_key required")
@@ -142,12 +142,86 @@ func (s *Service) ensureDevice(ctx context.Context, uid uint64, d DeviceInfo) (s
 	if name == "" || len([]rune(name)) > 64 {
 		return "", apiutil.Err(400, "invalid_device_name", "device name must be 1-64 characters")
 	}
+	if d.Type == "web" {
+		if err := s.makeRoomForWebDevice(ctx, uid); err != nil {
+			return "", err
+		}
+	}
 	id := uuid.NewString()
 	// Informational fields come from the client (Android reports a long kernel string): clip them
 	// to the column sizes instead of failing the login.
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO devices(id,user_id,name,device_type,os_version,app_version,public_key) VALUES(?,?,?,?,?,?,?)`,
 		id, uid, name, d.Type, clip(d.OSVersion, 64), clip(d.AppVersion, 32), d.PublicKey)
 	return id, err
+}
+
+// MaxWebDevices caps the browser devices of one account. A browser has no stable hardware identity (clearing
+// site data makes a new device), so rather than refusing a sign-in the least recently seen offline one is retired.
+const MaxWebDevices = 10
+
+func (s *Service) makeRoomForWebDevice(ctx context.Context, uid uint64) error {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,status FROM devices WHERE user_id=? AND device_type='web' AND revoked_at IS NULL
+		ORDER BY COALESCE(last_seen_at,created_at) ASC`, uid)
+	if err != nil {
+		return err
+	}
+	type dev struct{ id, status string }
+	var all []dev
+	for rows.Next() {
+		var d dev
+		if err := rows.Scan(&d.id, &d.status); err != nil {
+			rows.Close()
+			return err
+		}
+		all = append(all, d)
+	}
+	rows.Close()
+	var retire []string
+	for _, d := range all {
+		if len(all)-len(retire) < MaxWebDevices {
+			break
+		}
+		if d.status != "online" {
+			retire = append(retire, d.id)
+		}
+	}
+	if len(all)-len(retire) >= MaxWebDevices {
+		return apiutil.Err(409, "too_many_web_devices", "too many browser devices are online; sign out of one first")
+	}
+	return s.revokeDevices(ctx, retire)
+}
+
+// PurgeStaleWebDevices retires browser devices that have not been online for a long time.
+func (s *Service) PurgeStaleWebDevices(ctx context.Context, olderThan time.Duration) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM devices WHERE device_type='web' AND revoked_at IS NULL AND status<>'online'
+		AND COALESCE(last_seen_at,created_at) < ?`, time.Now().UTC().Add(-olderThan))
+	if err != nil {
+		return
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	_ = s.revokeDevices(ctx, ids)
+}
+
+func (s *Service) revokeDevices(ctx context.Context, ids []string) error {
+	for _, id := range ids {
+		if _, err := s.DB.ExecContext(ctx, `UPDATE devices SET revoked_at=UTC_TIMESTAMP(3), status='revoked' WHERE id=? AND revoked_at IS NULL`, id); err != nil {
+			return err
+		}
+		if _, err := s.DB.ExecContext(ctx, `UPDATE device_sessions SET revoked_at=UTC_TIMESTAMP(3) WHERE device_id=? AND revoked_at IS NULL`, id); err != nil {
+			return err
+		}
+	}
+	if s.OnRevoke != nil && len(ids) > 0 {
+		s.OnRevoke(ids)
+	}
+	return nil
 }
 
 // clip truncates to at most n runes.

@@ -22,7 +22,7 @@ var Version = "0.1.0"
 // token. Empty = endpoint disabled.
 var MetricsToken string
 
-func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL time.Duration, maxTransfer uint64) http.Handler {
+func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL time.Duration, maxTransfer uint64, webDir string) http.Handler {
 	mux := http.NewServeMux()
 	if authSvc != nil {
 		authSvc.OnRevoke = func(ids []string) {
@@ -36,6 +36,9 @@ func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL
 		tr.Routes(mux)
 		go tr.RunSweeper(context.Background())
 		(&messaging.Handler{Hub: hub, Auth: authSvc, OfflineTTL: offlineTTL}).Routes(mux)
+	}
+	if webDir != "" {
+		mux.Handle("GET /", webHandler(webDir))
 	}
 	if MetricsToken != "" && db != nil {
 		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {

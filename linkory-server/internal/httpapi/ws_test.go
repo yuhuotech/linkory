@@ -146,3 +146,29 @@ func TestMessaging(t *testing.T) {
 		}
 	}
 }
+
+// Browsers cannot set headers on a WebSocket: the token rides in the subprotocol list instead.
+func TestWebSocketTokenViaSubprotocol(t *testing.T) {
+	h := setup(t)
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	call(h, "POST", "/api/v1/auth/register", "", map[string]any{"username": "dana", "password": "password123"})
+	out := login(t, h, "dana", "mac")
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/v1/ws"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"linkory.v1", "bearer." + out["access_token"].(string)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	if c.Subprotocol() != "linkory.v1" {
+		t.Fatalf("negotiated %q", c.Subprotocol())
+	}
+	(&wsConn{t, c}).expect("presence.snapshot")
+
+	if _, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"linkory.v1", "bearer.not-a-token"}}); err == nil || resp == nil || resp.StatusCode != 401 {
+		t.Fatalf("bad token must be refused with 401: %v", err)
+	}
+}

@@ -53,10 +53,11 @@ func main() {
 		for range time.Tick(time.Hour) {
 			store.PurgeExpired(context.Background(), cfg.OfflineMsgTTL)
 			authSvc.PurgeTombstones(context.Background(), 30*24*time.Hour)
+			authSvc.PurgeStaleWebDevices(context.Background(), 30*24*time.Hour)
 		}
 	}()
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: httpapi.NewRouter(db, authSvc, hub, cfg.OfflineMsgTTL, uint64(cfg.MaxTransferBytes)), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: cfg.Addr, Handler: httpapi.NewRouter(db, authSvc, hub, cfg.OfflineMsgTTL, uint64(cfg.MaxTransferBytes), cfg.WebDir), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Info("listening", "addr", cfg.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

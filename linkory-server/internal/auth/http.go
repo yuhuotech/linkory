@@ -21,6 +21,9 @@ func (s *Service) Middleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !ok {
+			tok, ok = websocketToken(r)
+		}
+		if !ok {
 			apiutil.Fail(w, apiutil.ErrUnauthorized)
 			return
 		}
@@ -31,6 +34,23 @@ func (s *Service) Middleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, p)))
 	}
+}
+
+// websocketToken reads the access token a browser sends with its WebSocket handshake. Browsers cannot set an
+// Authorization header on a WebSocket, so the token travels as a subprotocol ("linkory.v1, bearer.<token>") rather
+// than in the URL, where it would end up in access logs. Only honoured on WebSocket upgrades.
+func websocketToken(r *http.Request) (string, bool) {
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return "", false
+	}
+	for _, line := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, p := range strings.Split(line, ",") {
+			if tok, ok := strings.CutPrefix(strings.TrimSpace(p), "bearer."); ok && tok != "" {
+				return tok, true
+			}
+		}
+	}
+	return "", false
 }
 
 func (s *Service) Routes(mux *http.ServeMux) {

@@ -10,9 +10,9 @@
 | GET `/devices` / PATCH `/devices/{id}` `{name}` / DELETE `/devices/{id}` | 设备列表、重命名、移除（立即使其凭证失效并断开连接） |
 | GET `/conversations` | 当前设备的会话列表（对端设备） |
 | GET `/messages?peer_device_id=&before=<unix ms>&limit=` | 历史消息，新→旧 |
-| GET `/ws`（Bearer，header） | WebSocket |
+| GET `/ws`（Bearer，header；浏览器无法设置 header，改用子协议 `Sec-WebSocket-Protocol: linkory.v1, bearer.<access_token>`，服务端选定 `linkory.v1`） | WebSocket |
 
-device.type：`windows|macos|linux|android|ios`。登录失败 5 次/5 分钟（用户名+IP）→ 429。
+device.type：`windows|macos|linux|android|ios|web`（`web` 为浏览器，每账号最多 10 个，超出时自动吊销最久未在线的；30 天未在线自动吊销）。登录失败 5 次/5 分钟（用户名+IP）→ 429。
 与 PRD 草案的差异：设备注册合并进 `login`（登录即自动注册）。
 
 ## WebSocket 帧

@@ -14,6 +14,7 @@ type Config struct {
 	OfflineMsgTTL    time.Duration
 	MaxTransferBytes int64
 	JWTSecret        string
+	WebDir           string // optional: a Flutter web build served on every path the API does not use
 }
 
 func Load() Config {
@@ -24,6 +25,7 @@ func Load() Config {
 		RefreshTokenTTL:  envDuration("LINKORY_REFRESH_TTL", 90*24*time.Hour),
 		OfflineMsgTTL:    envDuration("LINKORY_OFFLINE_MSG_TTL", 30*24*time.Hour),
 		JWTSecret:        env("LINKORY_JWT_SECRET", ""),
+		WebDir:           env("LINKORY_WEB_DIR", ""),
 		MaxTransferBytes: envInt64("LINKORY_MAX_TRANSFER_BYTES", 2<<30),
 	}
 }
