@@ -178,7 +178,7 @@ class UpdatePanel extends ConsumerWidget {
           Row(mainAxisSize: MainAxisSize.min, children: [
             LSwitch(value: u.autoCheck, onChanged: n.setAutoCheck),
             const SizedBox(width: 10),
-            Text('每小时检查一次（只请求一个很小的版本信息，几乎不耗电）', style: Type.body.copyWith(color: c.text2)),
+            Text('每小时检查一次', style: Type.body.copyWith(color: c.text2)),
           ])),
       row(
           '预发布版本',
