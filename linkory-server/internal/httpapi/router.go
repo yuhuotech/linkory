@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/linkory/linkory-server/internal/auth"
@@ -22,7 +23,31 @@ var Version = "0.1.0"
 // token. Empty = endpoint disabled.
 var MetricsToken string
 
-func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL time.Duration, maxTransfer uint64, webDir string) http.Handler {
+// Options are the deployment choices of a server that are not about the database.
+type Options struct {
+	// WebDir: a Flutter web build served on every path the API does not use ("" = none).
+	WebDir string
+	// CORSOrigins: page origins allowed to call the API from a browser (empty = same origin only; "*" = any).
+	CORSOrigins []string
+	// WebCustomServer: the served web page may also sign in to other servers (widens its Content-Security-Policy).
+	WebCustomServer bool
+}
+
+// originHosts is the host part of CORSOrigins, for the WebSocket origin check.
+func (o Options) originHosts() []string {
+	var hosts []string
+	for _, v := range o.CORSOrigins {
+		if v == "*" {
+			return []string{"*"}
+		}
+		if u, err := url.Parse(v); err == nil && u.Host != "" {
+			hosts = append(hosts, u.Host)
+		}
+	}
+	return hosts
+}
+
+func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL time.Duration, maxTransfer uint64, opt Options) http.Handler {
 	mux := http.NewServeMux()
 	if authSvc != nil {
 		authSvc.OnRevoke = func(ids []string) {
@@ -35,10 +60,14 @@ func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL
 		tr := &transfers.Handler{Svc: &transfers.Service{DB: db, MaxBytes: maxTransfer}, Auth: authSvc, Hub: hub}
 		tr.Routes(mux)
 		go tr.RunSweeper(context.Background())
-		(&messaging.Handler{Hub: hub, Auth: authSvc, OfflineTTL: offlineTTL}).Routes(mux)
+		(&messaging.Handler{Hub: hub, Auth: authSvc, OfflineTTL: offlineTTL, OriginHosts: opt.originHosts()}).Routes(mux)
 	}
-	if webDir != "" {
-		mux.Handle("GET /", webHandler(webDir))
+	if opt.WebDir != "" {
+		mux.Handle("GET /", webHandler(opt))
+		mux.HandleFunc("GET /web-config.json", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-cache")
+			writeJSON(w, http.StatusOK, map[string]any{"custom_server": opt.WebCustomServer})
+		})
 	}
 	if MetricsToken != "" && db != nil {
 		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +107,7 @@ func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
-	return mux
+	return cors(opt.CORSOrigins, mux)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

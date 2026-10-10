@@ -34,7 +34,7 @@ func setup(t *testing.T) http.Handler {
 	}
 	t.Cleanup(func() { db.Close() })
 	hub := messaging.NewHub(db, &messaging.Store{DB: db})
-	return NewRouter(db, auth.NewService(db, []byte("test-secret-test-secret-test-secret"), time.Minute, time.Hour), hub, 30*24*time.Hour, 10<<20, "")
+	return NewRouter(db, auth.NewService(db, []byte("test-secret-test-secret-test-secret"), time.Minute, time.Hour), hub, 30*24*time.Hour, 10<<20, Options{})
 }
 
 func call(h http.Handler, method, path, token string, body any) (int, map[string]any) {

@@ -36,7 +36,8 @@
   | 文件接收 | 写入下载目录 | 点「接收」时弹出另存为（File System Access API，Chromium）并边收边写；其他浏览器先在内存中拼成 Blob 再下载，上限 1 GB。边收边校验 SHA-256，校验失败不会交给用户。不支持自动接收（保存对话框需要用户点击） |
   | 局域网直连、托盘、更新、开机启动 | 有 | 无（界面隐藏） |
 - **同源部署**：服务端新增 `LINKORY_WEB_DIR`，设置后在未匹配的路径上托管网页静态文件（带 CSP 等安全头）。浏览器始终访问页面所在源，无需 CORS，WebSocket 的 Origin 校验天然通过。`my.linkory.cn` 与现有域名指向同一个服务端进程，账号互通。
-- 网页端服务器地址固定为 `Uri.base.origin`，登录页不显示地址输入。
+- 默认情况下网页端服务器地址固定为 `Uri.base.origin`，登录页不显示地址输入。
+- **可选：连接自建服务器**。托管网页的服务端设置 `LINKORY_WEB_ALLOW_CUSTOM_SERVER=true` 后（页面从 `/web-config.json` 读到），登录页出现“本站服务 / 自建服务器”选择。限制：自建服务器必须是 HTTPS（浏览器禁止 HTTPS 页面访问 http:// 的混合内容；本机 localhost/127.0.0.1 例外），且自建服务端要在 `LINKORY_CORS_ORIGINS` 里允许托管页面的来源（该配置同时放行 WebSocket 的来源校验）。此时页面的 CSP `connect-src` 放宽为 `'self' https: wss:` 加本机地址；因此只在需要时开启，默认关闭。令牌仍用 Authorization 头，不用 Cookie（跨站 Cookie 会被浏览器拦截），所以第 3 阶段的 Cookie 方案只适用于同源模式。
 - 构建：`flutter build web --release --no-web-resources-cdn`（CanvasKit 随包发布，不依赖 gstatic，国内可用），并随包内置中文字体（否则中文会回退到 gstatic 字体而显示方块）。
 
 ## 4. 服务端改动

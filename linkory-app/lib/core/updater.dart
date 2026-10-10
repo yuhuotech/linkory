@@ -306,17 +306,19 @@ final updateProvider = NotifierProvider<UpdateNotifier, UpdateState>(
 /// Checks GitHub Releases hourly (conditional requests: a 304 costs almost nothing and no battery),
 /// and installs the platform's package when the user asks.
 class UpdateNotifier extends Notifier<UpdateState> {
-  Timer? _timer;
+  Timer? _timer, _firstCheckTimer, _retryTimer;
+  int _retryAttempts = 0;
   http.Client? _dl;
   late final _current =
       SemVer.tryParse(appVersion) ?? SemVer(0, 0, 0, const []);
 
   static const checkEvery = Duration(hours: 1);
+  static const retryDelays = [Duration(minutes: 2), Duration(minutes: 5), Duration(minutes: 15)];
 
   @override
   UpdateState build() {
     ref.onDispose(() {
-      _timer?.cancel();
+      _cancelSchedule();
       _dl?.close();
     });
     final p = ref.read(prefsProvider);
@@ -335,16 +337,36 @@ class UpdateNotifier extends Notifier<UpdateState> {
     );
   }
 
-  /// Start the hourly schedule. The first check waits a little so it never competes with start-up.
-  void start({Duration firstDelay = const Duration(seconds: 20)}) {
+  void _cancelSchedule() {
     _timer?.cancel();
+    _firstCheckTimer?.cancel();
+    _retryTimer?.cancel();
+    _timer = _firstCheckTimer = _retryTimer = null;
+  }
+
+  /// Always check after launch: a recent persisted check does not restore the
+  /// previous in-memory update badge, and a new release may have appeared.
+  void start({Duration firstDelay = const Duration(seconds: 20)}) {
+    _cancelSchedule();
+    _retryAttempts = 0;
     if (!state.autoCheck) return;
-    final last = state.lastChecked;
-    final stale =
-        last == null ||
-        DateTime.now().difference(last) > const Duration(minutes: 30);
-    if (stale) Timer(firstDelay, () => check());
-    _timer = Timer.periodic(checkEvery, (_) => check());
+    _firstCheckTimer = Timer(firstDelay, () {
+      _firstCheckTimer = null;
+      if (ref.mounted && state.autoCheck) unawaited(check());
+    });
+    _timer = Timer.periodic(checkEvery, (_) {
+      _retryAttempts = 0;
+      if (ref.mounted && state.autoCheck) unawaited(check());
+    });
+  }
+
+  void _scheduleRetry() {
+    if (!state.autoCheck || _timer == null || _retryAttempts >= retryDelays.length) return;
+    final delay = retryDelays[_retryAttempts++];
+    _retryTimer = Timer(delay, () {
+      _retryTimer = null;
+      if (ref.mounted && state.autoCheck) unawaited(check());
+    });
   }
 
   Future<void> setAutoCheck(bool on) async {
@@ -353,7 +375,7 @@ class UpdateNotifier extends Notifier<UpdateState> {
     if (on) {
       start(firstDelay: const Duration(seconds: 2));
     } else {
-      _timer?.cancel();
+      _cancelSchedule();
     }
   }
 
@@ -429,9 +451,13 @@ class UpdateNotifier extends Notifier<UpdateState> {
     }
   }
 
-  /// [manual]: the user asked, so errors are shown and the ignored version is un-ignored.
+  /// [manual]: explicit checks un-ignore the latest version. Errors from all
+  /// checks are visible in settings; automatic checks never open an error dialog.
   Future<void> check({bool manual = false}) async {
     if (state.busy) return;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    if (manual) _retryAttempts = 0;
     state = state.copyWith(phase: UpdatePhase.checking, error: null);
     try {
       final p = ref.read(prefsProvider);
@@ -480,6 +506,8 @@ class UpdateNotifier extends Notifier<UpdateState> {
       if (manual && newer != null && state.ignored == newer.tag) {
         await p.remove('update_ignored');
       }
+      if (!ref.mounted) return;
+      _retryAttempts = 0;
       state = state.copyWith(
         phase: UpdatePhase.idle,
         latest: newer,
@@ -499,10 +527,12 @@ class UpdateNotifier extends Notifier<UpdateState> {
       if (newer != null && updateAutoInstall) unawaited(install());
     } catch (e, st) {
       Log.error('update', 'check failed: $e', st);
+      if (!ref.mounted) return;
       state = state.copyWith(
         phase: UpdatePhase.idle,
-        error: manual ? '检查更新失败：${_msg(e)}' : null,
+        error: '检查更新失败：${_msg(e)}',
       );
+      if (!manual) _scheduleRetry();
     }
   }
 

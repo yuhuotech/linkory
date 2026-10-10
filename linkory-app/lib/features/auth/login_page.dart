@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/api.dart';
 import '../../core/session.dart';
+import '../../core/web/browser.dart';
 import '../../core/server_options.dart';
 import '../../shared/widgets.dart';
 import '../../theme/tokens.dart';
@@ -47,7 +49,8 @@ class LoginCard extends ConsumerStatefulWidget {
 
 class _LoginCardState extends ConsumerState<LoginCard> {
   late final _server = TextEditingController(
-    text: ref.read(sessionProvider).serverUrl,
+    // On the web the page's own server is the "本站" choice; the custom field starts empty.
+    text: kIsWeb && ref.read(sessionProvider).serverUrl == browserOrigin() ? '' : ref.read(sessionProvider).serverUrl,
   );
   late final _user = TextEditingController(
     text: ref.read(sessionProvider).username,
@@ -63,7 +66,7 @@ class _LoginCardState extends ConsumerState<LoginCard> {
     super.initState();
     final servers = ref.read(officialServersProvider);
     for (final server in servers) {
-      if (server.url == _server.text) _officialUrl = server.url;
+      if (server.url == _server.text || (kIsWeb && server.url == ref.read(sessionProvider).serverUrl)) _officialUrl = server.url;
     }
     if (servers.isNotEmpty &&
         !ref.read(prefsProvider).containsKey('server_url') &&
@@ -215,7 +218,7 @@ class _LoginCardState extends ConsumerState<LoginCard> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '包含 http:// 或 https://，如有端口也需填写。',
+                  kIsWeb ? '必须是 https:// 地址；服务端需在 LINKORY_CORS_ORIGINS 里允许 ${browserOrigin()}。' : '包含 http:// 或 https://，如有端口也需填写。',
                   style: Type.caption.copyWith(color: c.text3),
                 ),
               ],

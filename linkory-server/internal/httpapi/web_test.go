@@ -16,7 +16,7 @@ func TestWebHandlerServesShellAndAssets(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>shell</html>"), 0o644)
 	os.WriteFile(filepath.Join(dir, "main.dart.js"), []byte("js"), 0o644)
-	h := NewRouter(nil, nil, nil, 0, 0, dir)
+	h := NewRouter(nil, nil, nil, 0, 0, Options{WebDir: dir})
 
 	get := func(p string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -86,7 +86,7 @@ func TestWebHandlerGzipsLargeAssets(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>shell</html>"), 0o644)
 	os.WriteFile(filepath.Join(dir, "main.dart.js"), []byte(strings.Repeat("var a=1;", 1000)), 0o644)
 	os.WriteFile(filepath.Join(dir, "pic.png"), []byte("png"), 0o644)
-	h := NewRouter(nil, nil, nil, 0, 0, dir)
+	h := NewRouter(nil, nil, nil, 0, 0, Options{WebDir: dir})
 	req := httptest.NewRequest("GET", "/main.dart.js", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -134,6 +134,61 @@ func TestSameNamedDevicesGetADistinguishingSuffix(t *testing.T) {
 	for _, n := range names {
 		if !want[n] {
 			t.Fatalf("unexpected name %q in %v", n, names)
+		}
+	}
+}
+
+func TestCORSOnlyForListedOrigins(t *testing.T) {
+	h := NewRouter(nil, nil, nil, 0, 0, Options{CORSOrigins: []string{"https://my.example.com"}})
+	do := func(method, origin, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	if r := do("GET", "https://my.example.com", "/healthz"); r.Header().Get("Access-Control-Allow-Origin") != "https://my.example.com" {
+		t.Fatal("listed origin must be allowed")
+	}
+	if r := do("GET", "https://evil.example.org", "/healthz"); r.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("unlisted origin must not be allowed")
+	}
+	r := do("OPTIONS", "https://my.example.com", "/api/v1/transfers/x/data")
+	if r.Code != 204 || !strings.Contains(r.Header().Get("Access-Control-Allow-Headers"), "Authorization") || !strings.Contains(r.Header().Get("Access-Control-Allow-Methods"), "PUT") {
+		t.Fatalf("preflight: %d %v", r.Code, r.Header())
+	}
+	if r := do("GET", "", "/healthz"); r.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("no Origin, no CORS headers")
+	}
+	// Without configuration nothing changes.
+	plain := NewRouter(nil, nil, nil, 0, 0, Options{})
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	req.Header.Set("Origin", "https://my.example.com")
+	rec := httptest.NewRecorder()
+	plain.ServeHTTP(rec, req)
+	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("CORS must be off by default")
+	}
+}
+
+func TestWebConfigAndCSPFollowCustomServerSetting(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.html"), []byte("x"), 0o644)
+	for _, custom := range []bool{false, true} {
+		h := NewRouter(nil, nil, nil, 0, 0, Options{WebDir: dir, WebCustomServer: custom})
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", "/web-config.json", nil))
+		want := fmt.Sprintf(`"custom_server":%v`, custom)
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("web-config: %s", rec.Body.String())
+		}
+		rec = httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+		csp := rec.Header().Get("Content-Security-Policy")
+		if strings.Contains(csp, "connect-src 'self' https: wss:") != custom {
+			t.Fatalf("custom=%v but csp=%q", custom, csp)
 		}
 	}
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,10 @@ type Config struct {
 	MaxTransferBytes int64
 	JWTSecret        string
 	WebDir           string // optional: a Flutter web build served on every path the API does not use
+	// CORSOrigins lists the page origins (https://my.example.com) allowed to call this server from a browser; empty = same origin only.
+	CORSOrigins []string
+	// WebCustomServer lets the web page served here also sign in to other servers (the sign-in page then offers it).
+	WebCustomServer bool
 }
 
 func Load() Config {
@@ -26,6 +31,8 @@ func Load() Config {
 		OfflineMsgTTL:    envDuration("LINKORY_OFFLINE_MSG_TTL", 30*24*time.Hour),
 		JWTSecret:        env("LINKORY_JWT_SECRET", ""),
 		WebDir:           env("LINKORY_WEB_DIR", ""),
+		CORSOrigins:      envList("LINKORY_CORS_ORIGINS"),
+		WebCustomServer:  env("LINKORY_WEB_ALLOW_CUSTOM_SERVER", "") == "true",
 		MaxTransferBytes: envInt64("LINKORY_MAX_TRANSFER_BYTES", 2<<30),
 	}
 }
@@ -53,4 +60,14 @@ func envInt64(k string, def int64) int64 {
 		}
 	}
 	return def
+}
+
+func envList(k string) []string {
+	var out []string
+	for _, v := range strings.Split(os.Getenv(k), ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, strings.TrimSuffix(v, "/"))
+		}
+	}
+	return out
 }

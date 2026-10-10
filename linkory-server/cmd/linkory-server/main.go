@@ -57,7 +57,7 @@ func main() {
 		}
 	}()
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: httpapi.NewRouter(db, authSvc, hub, cfg.OfflineMsgTTL, uint64(cfg.MaxTransferBytes), cfg.WebDir), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: cfg.Addr, Handler: httpapi.NewRouter(db, authSvc, hub, cfg.OfflineMsgTTL, uint64(cfg.MaxTransferBytes), httpapi.Options{WebDir: cfg.WebDir, CORSOrigins: cfg.CORSOrigins, WebCustomServer: cfg.WebCustomServer}), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Info("listening", "addr", cfg.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

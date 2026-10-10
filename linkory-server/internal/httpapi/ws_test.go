@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
+	"github.com/linkory/linkory-server/internal/auth"
+	"github.com/linkory/linkory-server/internal/database"
+	"github.com/linkory/linkory-server/internal/messaging"
 )
 
 type wsConn struct {
@@ -170,5 +174,45 @@ func TestWebSocketTokenViaSubprotocol(t *testing.T) {
 
 	if _, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"linkory.v1", "bearer.not-a-token"}}); err == nil || resp == nil || resp.StatusCode != 401 {
 		t.Fatalf("bad token must be refused with 401: %v", err)
+	}
+}
+
+// A page from another origin may open the WebSocket only if its host is on the list.
+func TestWebSocketOriginCheck(t *testing.T) {
+	dsn := os.Getenv("LINKORY_TEST_DSN")
+	if dsn == "" {
+		t.Skip("LINKORY_TEST_DSN not set")
+	}
+	db, err := database.Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	h := setup(t) // creates the schema
+	call(h, "POST", "/api/v1/auth/register", "", map[string]any{"username": "frank", "password": "password123"})
+	tok := login(t, h, "frank", "mac")["access_token"].(string)
+
+	hub := messaging.NewHub(db, &messaging.Store{DB: db})
+	srv := httptest.NewServer(NewRouter(db, auth.NewService(db, []byte("test-secret-test-secret-test-secret"), time.Minute, time.Hour), hub, time.Hour, 1<<20,
+		Options{CORSOrigins: []string{"https://my.example.com"}}))
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/v1/ws"
+	dial := func(origin string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+			HTTPHeader:   http.Header{"Origin": {origin}},
+			Subprotocols: []string{"linkory.v1", "bearer." + tok},
+		})
+		if err == nil {
+			c.CloseNow()
+		}
+		return err
+	}
+	if err := dial("https://my.example.com"); err != nil {
+		t.Fatalf("listed origin refused: %v", err)
+	}
+	if err := dial("https://evil.example.org"); err == nil {
+		t.Fatal("unlisted origin must be refused")
 	}
 }

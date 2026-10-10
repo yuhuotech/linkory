@@ -13,6 +13,7 @@ import 'models.dart';
 import 'version.dart';
 import 'secrets.dart';
 import 'web/browser.dart';
+import 'web/web_config.dart';
 
 /// Pre-filled server address. `make app-run` points it at the shared LAN test server via
 /// --dart-define=LINKORY_DEFAULT_SERVER; release builds leave it to the user.
@@ -22,8 +23,8 @@ const _configuredServer = String.fromEnvironment('LINKORY_DEFAULT_SERVER', defau
 /// (LINKORY_DEFAULT_SERVER overrides this for development against another server).
 String get defaultServer => kIsWeb && !const bool.hasEnvironment('LINKORY_DEFAULT_SERVER') ? browserOrigin() : _configuredServer;
 
-/// True when the server address is not the user's choice (browser edition): the sign-in form hides it.
-bool get serverIsFixed => kIsWeb;
+/// True when the server address is not the user's choice (browser edition, unless the serving server allows others).
+bool get serverIsFixed => kIsWeb && !webCustomServerAllowed;
 
 enum AuthStatus { loading, loggedOut, loggedIn }
 

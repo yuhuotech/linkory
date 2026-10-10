@@ -15,11 +15,13 @@ import 'core/secrets.dart';
 import 'core/session.dart';
 import 'core/web/browser.dart';
 import 'core/web/fonts.dart';
+import 'core/web/web_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Log.init();
   await loadWebFonts();
+  await loadWebConfig();
   FlutterError.onError = (d) {
     Log.error('flutter', d.exception, d.stack);
     FlutterError.presentError(d);

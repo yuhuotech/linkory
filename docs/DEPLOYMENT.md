@@ -48,6 +48,8 @@ go run ./cmd/linkory-server        # 或 go build 后运行二进制
 | `LINKORY_OFFLINE_MSG_TTL` | `720h` | 未送达离线消息保留期 |
 | `LINKORY_MAX_TRANSFER_BYTES` | `2147483648` | 单文件大小上限（2 GiB） |
 | `LINKORY_WEB_DIR` | 空 | 网页版静态文件目录；设置后服务端在同一地址托管网页版（见下文） |
+| `LINKORY_WEB_ALLOW_CUSTOM_SERVER` | 空 | `true` 时，本服务托管的网页版登录页可以改连其他（HTTPS）服务器 |
+| `LINKORY_CORS_ORIGINS` | 空 | 逗号分隔的网页来源（如 `https://my.linkory.cn`），允许它们在浏览器里调用本服务；空 = 只允许同源 |
 
 > 如服务端配置项有变动，以 `linkory-server/internal/config/config.go` 为准。
 
@@ -119,3 +121,7 @@ make deploy-logs     # 最近日志
 - 同一浏览器配置文件 = 一台设备；每个账号最多保留 10 个网页设备，超出时自动清理最久未在线的，30 天未在线的也会被清理。
 - 自己构建：`cd linkory-app && flutter build web --release --no-web-resources-cdn`，产物在 `build/web`。
 - 设计与限制见 [WEB_DESIGN.md](WEB_DESIGN.md)。
+
+### 用别人托管的网页版连接你的服务器
+
+网页版（例如官方的 `https://my.linkory.cn`）可以连接自建服务器，前提是：你的服务器使用 HTTPS，并设置 `LINKORY_CORS_ORIGINS=https://my.linkory.cn`，然后重启；在网页登录页选「自建服务器」填写你的地址即可。托管网页的一方需开启 `LINKORY_WEB_ALLOW_CUSTOM_SERVER=true`。
