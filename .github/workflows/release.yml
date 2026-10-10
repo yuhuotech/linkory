@@ -285,6 +285,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # release notes diff against the previous tag
       - uses: actions/download-artifact@v4
         with:
           pattern: pkg-*
@@ -305,13 +307,34 @@ jobs:
           openssl pkeyutl -verify -inkey "$RUNNER_TEMP/update-signing.pem" -rawin -in SHA256SUMS.txt -sigfile SHA256SUMS.txt.sig
           rm -f "$RUNNER_TEMP/update-signing.pem"
           ls -la
+      - name: Write release notes
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Changes since the previous release (stable tags compare with the previous stable one), grouped by commit type.
+          prev=$(git tag --sort=-v:refname | grep -E '^v[0-9]' | grep -vx "$TAG" | { if [[ "$TAG" == *-* ]]; then cat; else grep -v -- '-'; fi; } | head -1 || true)
+          range="${prev:+$prev..}$TAG"
+          pick() { git log "$range" --no-merges --format='%s' | grep -E "^$1(\(|:|!)" | sed -E 's/^[a-z]+(\([^)]*\))?!?: ?//' | sed 's/^/- /'; }
+          section() { local t; t=$(pick "$1"); [ -n "$t" ] && printf '### %s\n\n%s\n\n' "$2" "$t" || true; }
+          { section feat '新功能'; section fix '修复'; section perf '性能'; } > changes.md
+          [ -s changes.md ] || echo "- 常规维护与改进" > changes.md
+          [ -n "$prev" ] && printf '完整对比：[%s...%s](https://github.com/%s/compare/%s...%s)\n' "$prev" "$TAG" "$REPO" "$prev" "$TAG" >> changes.md
+          V="${TAG#v}"
+          python3 - "$V" "$TAG" "$REPO" <<'PY'
+          import sys
+          v, tag, repo = sys.argv[1:]
+          t = open('.github/release-body.md').read()
+          for k, val in {'{{V}}': v, '{{TAG}}': tag, '{{REPO}}': repo, '{{CHANGES}}': open('changes.md').read().strip()}.items():
+              t = t.replace(k, val)
+          open('release-notes.md', 'w').write(t)
+          PY
       - name: Create the release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: 连信 Linkory ${{ github.ref_name }}
-          body_path: .github/release-body.md
-          generate_release_notes: true
+          body_path: release-notes.md
           # v1.2.3-rc1 / v1.2.3-beta -> pre-release
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: dist/*

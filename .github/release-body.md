@@ -1,20 +1,23 @@
-## 安装包
+## 下载
 
-| 平台 | 文件 | 说明 |
+| 系统 | 推荐下载 | 说明 |
 |---|---|---|
-| Windows (x64) | `Linkory-<版本>-windows-x64-setup.exe` | 安装程序（无需管理员权限，可选安装目录）；另有 `…-windows-x64.zip` 免安装版 |
-| macOS (Apple 芯片) | `Linkory-<版本>-macos.dmg`（`…-macos.zip` 供应用内更新使用） | **未签名**：首次打开请右键 →「打开」，或执行 `xattr -cr "/Applications/连信 Linkory.app"` |
-| Linux (x64) | `Linkory-<版本>-linux-amd64.deb`、`…-linux-x64.tar.gz` | `sudo apt install ./Linkory-*.deb`；tar.gz 解压后运行 `linkory_app` |
-| Android | `Linkory-<版本>-android.apk` | 使用测试签名，仅用于安装试用 |
-| 服务端 | `linkory-server-<版本>-<系统>-<架构>.tar.gz/zip` | Go 单文件程序，部署见仓库 `docs/DEPLOYMENT.md` |
+| Windows 10/11 | [`Linkory-{{V}}-windows-x64-setup.exe`](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-windows-x64-setup.exe) | 安装程序，无需管理员权限。也提供免安装的 [zip](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-windows-x64.zip)。暂未代码签名，首次运行若出现 SmartScreen 提示，点「更多信息 → 仍要运行」 |
+| macOS（Apple 芯片） | [`Linkory-{{V}}-macos.dmg`](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-macos.dmg) | 已签名并通过 Apple 公证，拖入「应用程序」即可打开 |
+| Linux（x64） | [`Linkory-{{V}}-linux-amd64.deb`](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-linux-amd64.deb) | `sudo apt install ./Linkory-{{V}}-linux-amd64.deb`；也提供 [tar.gz](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-linux-x64.tar.gz) |
+| Android | [`Linkory-{{V}}-android.apk`](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-android.apk) | 安装时需允许「安装未知来源应用」 |
+| iOS | — | 需要 Apple 开发者签名，暂未提供 |
 
-校验：`SHA256SUMS.txt`（附 Ed25519 签名 `SHA256SUMS.txt.sig`，应用内更新据此验证）。
+> 已经装过旧版？在应用的「设置 → 软件更新」里一键更新即可。访问 GitHub 慢时，可把下载源切到「国内加速」，安装包仍由官方签名校验。
 
-**应用内更新**：设置 → 软件更新，或侧栏出现的「发现新版本」提示，可一键下载、校验并安装（Windows 安装版、macOS 放在「应用程序」中、Linux 的 .deb 安装版、Android 均支持；其余情况会引导到本页手动下载）。访问不了 GitHub 时，可在更新对话框或设置里把下载源切换为「国内加速」（gh-proxy.com / ghfast.top），安装包仍由官方签名校验。
+## 更新内容
 
-## 使用
+{{CHANGES}}
 
-1. 先部署服务端（Docker 或二进制），客户端登录时填写服务端地址。
-2. 同一账号在多台设备登录后，设备会互相出现；局域网内文件自动走直连。
+## 自建服务端
 
-> iOS 需要 Apple 开发者签名，暂未提供安装包。
+客户端需要连接一个服务端才能互发消息。下载 `linkory-server-{{V}}-<系统>-<架构>` 是一个 Go 单文件程序，部署方法见 [`docs/DEPLOYMENT.md`](https://github.com/{{REPO}}/blob/{{TAG}}/docs/DEPLOYMENT.md)。
+
+## 校验
+
+`SHA256SUMS.txt` 列出了所有文件的 SHA-256，`SHA256SUMS.txt.sig` 是它的 Ed25519 签名（应用内更新据此验证）。
