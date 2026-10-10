@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/api.dart';
 import '../../core/models.dart';
+import '../../core/local_network.dart';
 import '../../core/session.dart';
 import '../../core/store.dart';
 import '../../shared/format.dart';
@@ -28,6 +29,9 @@ class DevicesView extends ConsumerWidget {
       ]);
     }
     final online = d.current || st.isOnline(d.id);
+    final localIps = d.current || d.id == 'local'
+        ? ref.watch(localIpAddressesProvider)
+        : null;
     Widget row(String k, String v) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(children: [
@@ -68,6 +72,14 @@ class DevicesView extends ConsumerWidget {
             child: Column(children: [
               row('设备 ID', guest ? '登录后由服务端分配' : d.id),
               Divider(height: 1, color: c.border),
+              if (localIps != null) ...[
+                row('局域网 IP', localIps.when(
+                  data: (ips) => ips.isEmpty ? '暂无可用局域网地址' : ips.join('\n'),
+                  loading: () => '正在获取…',
+                  error: (_, _) => '暂时无法获取',
+                )),
+                Divider(height: 1, color: c.border),
+              ],
               row('系统版本', d.osVersion),
               Divider(height: 1, color: c.border),
               row('客户端版本', d.appVersion),

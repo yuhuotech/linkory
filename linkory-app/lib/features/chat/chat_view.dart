@@ -154,22 +154,24 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     itemBuilder: (_, ri) {
                       final i = items.length - 1 - ri;
                       final it = items[i];
-                      final showTime = i == 0 || gap(items[i - 1].$1, it.$1);
-                      final first = showTime || key(items[i - 1].$2) != key(it.$2);
+                      final previousTime = i == 0 ? null : items[i - 1].$1;
+                      final currentDay = it.$1.toLocal();
+                      final previousDay = previousTime?.toLocal();
+                      final showTime = previousTime == null ||
+                          currentDay.year != previousDay!.year ||
+                          currentDay.month != previousDay.month ||
+                          currentDay.day != previousDay.day ||
+                          it.$1.difference(previousTime).inMinutes >= 30;
+                      final first = i == 0 || showTime || gap(items[i - 1].$1, it.$1) || key(items[i - 1].$2) != key(it.$2);
                       final last = i == items.length - 1 || gap(it.$1, items[i + 1].$1) || key(items[i + 1].$2) != key(it.$2);
                       final isPeer = key(it.$2) == 'peer';
                       return Column(children: [
                         if (showTime)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            child: Row(children: [
-                              Expanded(child: Divider(color: c.border, height: 1)),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: Text(fmtDaySeparator(it.$1), style: Type.caption.copyWith(color: c.text3)),
-                              ),
-                              Expanded(child: Divider(color: c.border, height: 1)),
-                            ]),
+                            child: Center(
+                              child: Text(fmtDaySeparator(it.$1), style: Type.caption.copyWith(color: c.text3)),
+                            ),
                           ),
                         if (it.$2 is ChatMessage)
                           MessageBubble(msg: it.$2 as ChatMessage, first: first, last: last, peer: peer, maxWidth: maxBubble)

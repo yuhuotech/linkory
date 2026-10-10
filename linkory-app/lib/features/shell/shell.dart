@@ -165,22 +165,25 @@ class _Content extends ConsumerWidget {
   final AppState st;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final c = context.c;
     final guest = ref.watch(isGuestProvider);
+    final c = context.c;
     return switch (st.section) {
-      Section.chats when guest => const GuestWelcome(),
+      Section.chats when st.showingHome && st.selectedPeer == null => const GuestWelcome(),
+      Section.chats when guest => const Column(children: [
+        PageHeader(title: '设备会话'),
+        Expanded(child: GuestEmpty(icon: LucideIcons.messageSquare,
+          title: '还没有会话', message: '登录后，选择设备开始发送消息和文件。')),
+      ]),
       Section.chats => st.selectedPeer == null || st.device(st.selectedPeer!) == null
           ? Column(children: [
-              const PageHeader(title: '连信'),
-              Expanded(
-                child: Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(LucideIcons.messagesSquare, size: 40, color: c.borderStrong),
-                    const SizedBox(height: 12),
-                    Text('选择一台设备开始传输', style: Type.body.copyWith(color: c.text3)),
-                  ]),
-                ),
-              ),
+              const PageHeader(title: '设备会话'),
+              Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(LucideIcons.messagesSquare, size: 40, color: c.borderStrong),
+                const SizedBox(height: 12),
+                Text('选择一台设备开始会话', style: Type.body.copyWith(color: c.text3)),
+                const SizedBox(height: 8),
+                Text('从左侧会话列表选择设备，发送消息或文件。', style: Type.caption.copyWith(color: c.text3)),
+              ]))),
             ])
           : ChatView(key: ValueKey(st.selectedPeer), peerId: st.selectedPeer!),
       Section.devices => DevicesView(deviceId: ref.watch(_devicePick) ?? st.self?.id ?? (guest ? 'local' : null)),
@@ -211,7 +214,7 @@ class _Rail extends ConsumerWidget {
     Widget nav(Section s, IconData icon, String tip, {int badge = 0}) => _RailButton(
           icon: icon,
           tooltip: tip,
-          selected: st.section == s,
+          selected: st.section == s && !(s == Section.chats && st.showingHome && st.selectedPeer == null),
           badge: badge,
           onTap: () => store.setSection(s),
         );
@@ -223,7 +226,7 @@ class _Rail extends ConsumerWidget {
         // in the top-left corner (their buttons sit top-right): use the same gap as the logo's side margin,
         // (72 - 28) / 2 = 22px, so it sits evenly in the corner.
         DragArea(child: SizedBox(height: (hasCustomWindowControls || debugShowWindowControls) ? (railWidth - 28) / 2 : 44, width: railWidth)),
-        const BrandLogo(),
+        BrandHomeButton(onPressed: store.goHome),
         const SizedBox(height: 18),
         nav(Section.chats, LucideIcons.messageSquare, st.totalUnread > 0 ? '设备会话（${st.totalUnread} 条未读）' : '设备会话', badge: st.totalUnread),
         const SizedBox(height: 4),
@@ -413,6 +416,10 @@ class _PeerList extends ConsumerWidget {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       itemCount: sorted.length,
+      findChildIndexCallback: (key) {
+        final index = sorted.indexWhere((d) => ValueKey('${forChat ? 'chat' : 'device'}-${d.id}') == key);
+        return index < 0 ? null : index;
+      },
       itemBuilder: (_, i) {
         final d = sorted[i];
         final guest = ref.watch(isGuestProvider);
@@ -424,6 +431,7 @@ class _PeerList extends ConsumerWidget {
             ? (last == null ? (online ? '在线' : '离线') : '${last.mine ? '你：' : ''}${last.type == 'clipboard' ? '[剪贴板] ' : ''}${last.content.replaceAll('\n', ' ')}')
             : '${deviceTypeLabel(d.type)} · ${d.current ? (guest ? '本机 · 未登录' : '本机') : online ? '在线' : '离线'}';
         return Padding(
+          key: ValueKey('${forChat ? 'chat' : 'device'}-${d.id}'),
           padding: const EdgeInsets.symmetric(vertical: 1),
           child: HoverRow(
             selected: selected,

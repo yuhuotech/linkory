@@ -20,7 +20,9 @@ NS = {'s': 'http://www.w3.org/2000/svg'}
 RECT = SVG.find('s:rect', NS)
 WIDTH = float(RECT.get('width'))
 RADIUS = float(RECT.get('rx')) / WIDTH
-COLOR = tuple(bytes.fromhex(RECT.get('fill')[1:]))
+# Read material colors from the brand SVG, keeping it the source of truth.
+COLORS = tuple(tuple(bytes.fromhex(stop.get('stop-color')[1:]))
+               for stop in SVG.findall("s:defs/s:linearGradient[@id='orange']/s:stop", NS))
 GROUP = SVG.find('s:g', NS)
 STROKE = float(GROUP.get('stroke-width')) / WIDTH
 RINGS = [(float(c.get('cx')) / WIDTH, float(c.get('cy')) / WIDTH,
@@ -52,15 +54,33 @@ def render(size, mode='app'):
                 for sx in range(ss):
                     u, v = (x+(sx+.5)/ss)/size, (y+(sy+.5)/ss)/size
                     # Maskable/Android foreground keep all glyphs inside the safe zone.
-                    scale = .8 if mode == 'maskable' else .66 if mode == 'foreground' else 1
+                    scale = .8 if mode == 'maskable' else .66 if mode == 'foreground' else 1/1.08 if mode == 'tray' else 1
                     gu, gv = (u-.5)/scale+.5, (v-.5)/scale+.5
-                    glyph = any(abs(math.hypot(gu-cx, gv-cy)-r) <= STROKE/2 for cx, cy, r in RINGS)
+                    distance = min(abs(math.hypot(gu-cx, gv-cy)-r)-STROKE/2 for cx, cy, r in RINGS)
+                    glyph = distance <= 0
                     qx, qy = abs(u-.5)-(.5-RADIUS), abs(v-.5)-(.5-RADIUS)
                     inside = math.hypot(max(qx, 0), max(qy, 0)) <= RADIUS
                     if mode in ('tray', 'foreground'):
                         c = ((0, 0, 0, 255) if mode == 'tray' else (255, 255, 255, 255)) if glyph else (0, 0, 0, 0)
                     elif inside or mode in ('opaque', 'maskable'):
-                        c = (255, 255, 255, 255) if glyph else (*COLOR, 255)
+                        if glyph:
+                            t = max(0, min(1, (gv-.27)/.46))
+                            c = (255, round(255-10*t), round(255-20*t), 255)
+                        else:
+                            t = (u+v)/2
+                            a, b = COLORS[:2] if t <= .48 else COLORS[1:]
+                            t = t/.48 if t <= .48 else (t-.48)/.52
+                            color = [a[i]+(b[i]-a[i])*t for i in range(3)]
+                            # Soft, short shadow under the complete union of both rings.
+                            d = min(abs(math.hypot(gu-cx, gv-.005-cy)-r)-STROKE/2 for cx, cy, r in RINGS)
+                            shadow = .18 * math.exp(-max(0, d)**2/(2*.005**2))
+                            color = [color[i]*(1-shadow)+(139, 48, 8)[i]*shadow for i in range(3)]
+                            # Subpixel edge lighting; no hard outline at small sizes.
+                            edge = RADIUS-math.hypot(max(qx, 0), max(qy, 0))-min(max(qx, qy), 0)
+                            rim = math.exp(-max(0, edge)/.0015)
+                            light = .24*(1-v)*rim
+                            shade = .12*v*rim
+                            c = (*[round(k*(1-light-shade)+255*light+(139, 48, 8)[i]*shade) for i, k in enumerate(color)], 255)
                     else:
                         c = (0, 0, 0, 0)
                     for i in range(4):
@@ -104,6 +124,8 @@ def main():
     ico(base / 'app.ico')
     if len(sys.argv) > 1:
         return
+    for size in (32, 64, 128, 256, 512, 1024):
+        write(ROOT / f'assets/brand/linkory-logo-{size}.png', size)
     for platform in ('macos', 'ios'):
         directory = APP / platform / 'Runner/Assets.xcassets/AppIcon.appiconset'
         for item in json.loads((directory / 'Contents.json').read_text())['images']:

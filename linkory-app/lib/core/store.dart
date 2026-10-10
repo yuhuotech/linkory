@@ -24,6 +24,7 @@ class AppState {
     this.devices = const [],
     this.online = const {},
     this.selectedPeer,
+    this.showingHome = true,
     this.messages = const {},
     this.transfers = const [],
     this.link = LinkState.closed,
@@ -40,6 +41,7 @@ class AppState {
   final List<Device> devices;
   final Set<String> online;
   final String? selectedPeer;
+  final bool showingHome;
   final Map<String, List<ChatMessage>> messages;
   final List<Transfer> transfers;
   final LinkState link;
@@ -67,6 +69,7 @@ class AppState {
     List<Device>? devices,
     Set<String>? online,
     Object? selectedPeer = _keep,
+    bool? showingHome,
     Map<String, List<ChatMessage>>? messages,
     List<Transfer>? transfers,
     LinkState? link,
@@ -84,6 +87,7 @@ class AppState {
         devices: devices ?? this.devices,
         online: online ?? this.online,
         selectedPeer: identical(selectedPeer, _keep) ? this.selectedPeer : selectedPeer as String?,
+        showingHome: showingHome ?? this.showingHome,
         messages: messages ?? this.messages,
         transfers: transfers ?? this.transfers,
         link: link ?? this.link,
@@ -385,15 +389,19 @@ class AppStore extends Notifier<AppState> {
     state = state.copyWith(transfers: list);
   }
 
+  void goHome() {
+    state = state.copyWith(section: Section.chats, selectedPeer: null, search: '', showingHome: true);
+  }
+
   void setSection(Section s) {
-    state = state.copyWith(section: s);
+    state = state.copyWith(section: s, showingHome: false);
     _readVisible();
   }
   void setSearch(String s) => state = state.copyWith(search: s);
   void clearError() => state = state.copyWith(error: null);
 
   Future<void> selectPeer(String id) async {
-    state = state.copyWith(selectedPeer: id, section: Section.chats);
+    state = state.copyWith(selectedPeer: id, section: Section.chats, showingHome: false);
     _readVisible();
     await loadHistory(id);
   }

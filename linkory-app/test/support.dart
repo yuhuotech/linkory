@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:linkory_app/core/models.dart';
+import 'package:linkory_app/core/local_network.dart';
 import 'package:linkory_app/core/realtime.dart';
 import 'package:linkory_app/core/secrets.dart';
 import 'package:linkory_app/core/session.dart';
@@ -41,7 +42,7 @@ class FakeStore extends AppStore {
   }
 
   @override
-  Future<void> selectPeer(String id) async => state = state.copyWith(selectedPeer: id, section: Section.chats);
+  Future<void> selectPeer(String id) async => state = state.copyWith(selectedPeer: id, section: Section.chats, showingHome: false);
   /// Per-task file paths for tests that need a real file on disk.
   static final files = <String, String>{};
   @override
@@ -134,6 +135,7 @@ Future<List<Override>> overrides(AppState s, {AuthStatus auth = AuthStatus.logge
   final prefs = await SharedPreferences.getInstance();
   return [
     prefsProvider.overrideWithValue(prefs),
+    localIpAddressesProvider.overrideWith((_) async => ['192.168.1.23']),
     secretsProvider.overrideWithValue(Secrets.memory(auth == AuthStatus.loggedIn ? {'access': 'a', 'refresh': 'r'} : {})),
     storeProvider.overrideWith(() => FakeStore(s)),
     updateProvider.overrideWith(() => FakeUpdate(update)),

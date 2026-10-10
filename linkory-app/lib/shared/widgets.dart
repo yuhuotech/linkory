@@ -22,6 +22,40 @@ class BrandLogo extends StatelessWidget {
       );
 }
 
+/// Fixed home entry in the desktop rail.
+class BrandHomeButton extends StatefulWidget {
+  const BrandHomeButton({super.key, required this.onPressed});
+  final VoidCallback onPressed;
+  @override
+  State<BrandHomeButton> createState() => _BrandHomeButtonState();
+}
+
+class _BrandHomeButtonState extends State<BrandHomeButton> {
+  bool _down = false;
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: '返回首页',
+    child: MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Semantics(
+        button: true,
+        label: '返回首页',
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          onTapDown: (_) => setState(() => _down = true),
+          onTapUp: (_) => setState(() => _down = false),
+          onTapCancel: () => setState(() => _down = false),
+          child: AnimatedScale(
+            scale: _down ? .96 : 1,
+            duration: const Duration(milliseconds: 100),
+            child: const BrandLogo(),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 enum BtnVariant { solid, neutral, quiet, ghost, destructive }
 
 /// cc-switch Button: compact 28 / regular 32, radius 6, press scales to .96.
@@ -97,7 +131,7 @@ class _LButtonState extends State<LButton> {
                 borderRadius: BorderRadius.circular(Radii.control),
                 border: Border.all(color: bd),
               ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
+              child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
                 if (widget.loading)
                   SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: fg))
                 else if (widget.icon != null)
@@ -146,6 +180,60 @@ class _LIconButtonState extends State<LIconButton> {
       ),
     );
     return widget.tooltip == null ? w : Tooltip(message: widget.tooltip!, child: w);
+  }
+}
+
+/// Token-based selector shared by forms; no ripple or default underline.
+class LSelectOption<T> {
+  const LSelectOption(this.value, this.label, {this.enabled = true});
+  final T value;
+  final String label;
+  final bool enabled;
+}
+
+class LSelect<T> extends StatelessWidget {
+  const LSelect({super.key, required this.value, required this.options, this.onChanged});
+  final T value;
+  final List<LSelectOption<T>> options;
+  final ValueChanged<T?>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: c.bgCard,
+        border: Border.all(color: c.borderStrong),
+        borderRadius: BorderRadius.circular(Radii.control),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(splashFactory: NoSplash.splashFactory),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<T>(
+            value: value,
+            isExpanded: true,
+            isDense: true,
+            dropdownColor: c.bgCard,
+            borderRadius: BorderRadius.circular(Radii.control),
+            elevation: 0,
+            style: Type.body.copyWith(color: c.text1),
+            icon: Icon(LucideIcons.chevronDown, size: 16, color: c.text3),
+            onChanged: onChanged,
+            items: [
+              for (final option in options)
+                DropdownMenuItem<T>(
+                  value: option.value,
+                  enabled: option.enabled,
+                  child: Text(option.label, overflow: TextOverflow.ellipsis,
+                    style: Type.body.copyWith(color: option.enabled ? c.text1 : c.text3)),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -303,14 +391,15 @@ class _HoverRowState extends State<HoverRow> {
     final c = context.c;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
+      hitTestBehavior: HitTestBehavior.opaque,
+      onEnter: (_) { if (!_hover) setState(() => _hover = true); },
+      onHover: (_) { if (!_hover) setState(() => _hover = true); },
+      onExit: (_) { if (_hover) setState(() => _hover = false); },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         onSecondaryTap: widget.onSecondaryTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
+        child: Container(
           padding: widget.padding,
           decoration: BoxDecoration(
             color: widget.selected ? c.bgSelected : (_hover ? c.bgSubtle : Colors.transparent),

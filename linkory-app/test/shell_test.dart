@@ -3,27 +3,29 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:linkory_app/app/app.dart';
 import 'package:linkory_app/core/session.dart';
+import 'package:linkory_app/core/server_options.dart';
 import 'package:linkory_app/core/models.dart' show Transfer;
 import 'package:linkory_app/core/store.dart';
 import 'package:linkory_app/features/transfers/transfer_card.dart' show ImagePreview;
 import 'package:linkory_app/core/updater.dart';
 import 'package:linkory_app/core/update_install.dart';
-import 'package:linkory_app/shared/widgets.dart' show debugShowWindowControls;
+import 'package:linkory_app/shared/widgets.dart' show debugShowWindowControls, HoverRow;
 
 import 'support.dart';
 
 Future<void> pumpApp(WidgetTester t, AppState s,
-    {Brightness b = Brightness.light, AuthStatus auth = AuthStatus.loggedIn, Size size = const Size(1200, 780), UpdateState? update}) async {
+    {Brightness b = Brightness.light, AuthStatus auth = AuthStatus.loggedIn, Size size = const Size(1200, 780), UpdateState? update, List<OfficialServer> servers = const []}) async {
   t.view.physicalSize = size;
   t.view.devicePixelRatio = 1;
   t.platformDispatcher.platformBrightnessTestValue = b;
   addTearDown(t.view.reset);
   addTearDown(t.platformDispatcher.clearPlatformBrightnessTestValue);
-  await t.pumpWidget(ProviderScope(key: UniqueKey(), overrides: await overrides(s, auth: auth, update: update), child: const LinkoryApp()));
+  await t.pumpWidget(ProviderScope(key: UniqueKey(), overrides: [...await overrides(s, auth: auth, update: update), officialServersProvider.overrideWithValue(servers)], child: const LinkoryApp()));
   // Wait for the brand asset decoder before comparing the first golden.
   await t.runAsync(() => precacheImage(
         const AssetImage('assets/icons/app_128.png'),
@@ -50,6 +52,65 @@ void main() {
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/chat_dark.png'));
   });
 
+  testWidgets('logo returns to the signed-in home and quick actions work', (t) async {
+    for (final brightness in [Brightness.light, Brightness.dark]) {
+      await pumpApp(t, fixtureState(), b: brightness);
+      await t.tap(find.byTooltip('返回首页'));
+      await t.pumpAndSettle();
+      expect(find.text('欢迎回来，hongmw'), findsOneWidget);
+      expect(find.text('已连接'), findsOneWidget);
+      expect(find.text('2 台在线 / 3 台已关联'), findsOneWidget);
+      expect(find.text('注册账号'), findsNothing);
+      final theme = brightness == Brightness.light ? 'light' : 'dark';
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/home_signed_in_$theme.png'));
+      await t.tap(find.text('发送消息'));
+      await t.pumpAndSettle();
+      expect(find.text('欢迎回来，hongmw'), findsNothing);
+      expect(find.text('文件我放在共享盘了，你看一下'), findsOneWidget);
+      await t.tap(find.byTooltip('返回首页'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('传输中心'));
+      await t.pumpAndSettle();
+      expect(find.text('欢迎回来，hongmw'), findsNothing);
+      await t.tap(find.byTooltip('返回首页'));
+      await t.pumpAndSettle();
+      expect(find.text('欢迎回来，hongmw'), findsOneWidget);
+    }
+    await pumpApp(t, const AppState());
+    await t.tap(find.byTooltip('设备会话'));
+    await t.pumpAndSettle();
+    expect(find.text('欢迎回来，hongmw'), findsNothing);
+    expect(find.text('选择一台设备开始会话'), findsOneWidget);
+    await t.tap(find.byTooltip('返回首页'));
+    await t.pumpAndSettle();
+    expect(find.text('在另一台设备上登录同一账号，即可开始互发消息和文件。'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('unselected device rows retain hover until pointer leaves', (t) async {
+    for (final section in [Section.chats, Section.devices]) {
+      await pumpApp(t, fixtureState(section: section));
+      final row = find.ancestor(of: find.text('Pixel 9'), matching: find.byType(HoverRow));
+      final pointer = await t.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(location: const Offset(1190, 770));
+      await pointer.moveTo(t.getCenter(row));
+      await t.pumpAndSettle();
+      Color? background() => (t.widget<DecoratedBox>(find.descendant(
+        of: row, matching: find.byType(DecoratedBox)).first).decoration as BoxDecoration).color;
+      final hover = background();
+      expect(hover, isNot(Colors.transparent));
+      await t.pump(const Duration(seconds: 1));
+      expect(background(), hover);
+      await pointer.moveTo(t.getTopLeft(row) + const Offset(12, 12));
+      await t.pumpAndSettle();
+      expect(background(), hover);
+      await pointer.moveTo(const Offset(1190, 770));
+      await t.pumpAndSettle();
+      expect(background(), Colors.transparent);
+      await pointer.removePointer();
+    }
+  });
+
   testWidgets('other sections render', (t) async {
     for (final s in [Section.devices, Section.transfers, Section.settings]) {
       await pumpApp(t, fixtureState(section: s));
@@ -69,6 +130,8 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('当前未登录：登录后才能与你的其他设备互联、收发消息和文件。'), findsOneWidget);
     expect(find.text('我的 MacBook Pro'), findsWidgets);
+    expect(find.text('局域网 IP'), findsOneWidget);
+    expect(find.text('192.168.1.23'), findsOneWidget);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/guest_devices_light.png'));
     await t.tap(find.byTooltip('传输中心'));
     await t.pumpAndSettle();
@@ -78,7 +141,7 @@ void main() {
     expect(find.text('未登录'), findsWidgets);
 
     // Sign-in opens as a dialog on demand.
-    await t.tap(find.byTooltip('设备会话'));
+    await t.tap(find.byTooltip('返回首页'));
     await t.pumpAndSettle();
     await t.tap(find.text('登录').first);
     await t.pumpAndSettle();
@@ -87,6 +150,78 @@ void main() {
     await t.tap(find.byTooltip('关闭'));
     await t.pumpAndSettle();
     expect(find.text('服务器地址'), findsNothing);
+  });
+
+  testWidgets('auth actions switch modes in light and dark themes', (t) async {
+    for (final brightness in [Brightness.light, Brightness.dark]) {
+      await pumpApp(t, const AppState(), auth: AuthStatus.loggedOut, b: brightness);
+      await t.tap(find.text('登录').first);
+      await t.pumpAndSettle();
+      final theme = brightness == Brightness.light ? 'light' : 'dark';
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/login_dialog_$theme.png'));
+      await t.tap(find.text('注册账号').last);
+      await t.pumpAndSettle();
+      expect(find.text('注册并登录'), findsOneWidget);
+      expect(find.text('确认密码'), findsOneWidget);
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/register_dialog_$theme.png'));
+      await t.tap(find.text('注册并登录'));
+      await t.pumpAndSettle();
+      expect(find.text('请再次输入密码'), findsWidgets);
+      await t.enterText(find.widgetWithText(TextField, '至少 8 位'), 'password123');
+      await t.enterText(find.widgetWithText(TextField, '请再次输入密码'), 'different123');
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await t.pumpAndSettle();
+      expect(find.text('两次输入的密码不一致，请重新确认'), findsOneWidget);
+      await t.tap(find.text('返回登录'));
+      await t.pumpAndSettle();
+      expect(find.text('注册并登录'), findsNothing);
+      expect(find.text('确认密码'), findsNothing);
+      await t.tap(find.byTooltip('关闭'));
+      await t.pumpAndSettle();
+    }
+  });
+
+  testWidgets('server selection separates official service and custom address', (t) async {
+    for (final brightness in [Brightness.light, Brightness.dark]) {
+      await pumpApp(t, const AppState(), auth: AuthStatus.loggedOut, b: brightness,
+        size: const Size(390, 844), servers: const [
+          OfficialServer(name: '连信官方', url: 'https://linkory.dev99.cn'),
+        ]);
+      await t.tap(find.text('登录').first);
+      await t.pumpAndSettle();
+      expect(find.text('连信官方'), findsOneWidget);
+      expect(find.text('服务器地址'), findsNothing);
+      final theme = brightness == Brightness.light ? 'light' : 'dark';
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/login_official_$theme.png'));
+      await t.tap(find.text('连信官方'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('自建服务器').last);
+      await t.pumpAndSettle();
+      expect(find.text('服务器地址'), findsOneWidget);
+      await t.enterText(find.widgetWithText(TextField, 'https://linkory.example.com'), 'not-a-url');
+      await t.tap(find.text('登录').last);
+      await t.pumpAndSettle();
+      expect(find.text('请输入完整的服务器地址，例如 https://linkory.example.com'), findsOneWidget);
+      await t.enterText(find.widgetWithText(TextField, 'https://linkory.example.com'), 'https://my-server.example.com:8443');
+      await t.tap(find.text('自建服务器'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('连信官方').last);
+      await t.pumpAndSettle();
+      expect(find.text('服务器地址'), findsNothing);
+      expect(find.text('请输入完整的服务器地址，例如 https://linkory.example.com'), findsNothing);
+      await t.tap(find.text('连信官方'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('自建服务器').last);
+      await t.pumpAndSettle();
+      expect(find.text('https://my-server.example.com:8443'), findsOneWidget);
+      await t.tap(find.text('注册账号').last);
+      await t.pumpAndSettle();
+      expect(find.text('确认密码'), findsOneWidget);
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/register_custom_phone_$theme.png'));
+      expect(t.takeException(), isNull);
+      await t.tap(find.byTooltip('关闭'));
+      await t.pumpAndSettle();
+    }
   });
 
   testWidgets('signed out on a phone: lists explain themselves, bottom nav works', (t) async {
