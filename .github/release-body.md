@@ -6,6 +6,7 @@
 | macOS（Apple 芯片） | [`Linkory-{{V}}-macos.dmg`](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-macos.dmg) | 已签名并通过 Apple 公证，拖入「应用程序」即可打开 |
 | Linux（x64） | [`Linkory-{{V}}-linux-amd64.deb`](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-linux-amd64.deb) | `sudo apt install ./Linkory-{{V}}-linux-amd64.deb`；也提供 [tar.gz](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-linux-x64.tar.gz) |
 | Android | [`Linkory-{{V}}-android.apk`](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-android.apk) | 安装时需允许「安装未知来源应用」 |
+| 管理后台 | [`Linkory-{{V}}-admin.zip`](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-admin.zip) | 解压后设置 `LINKORY_ADMIN_DIR`，服务器 CLI 创建独立管理员，见 `linkory-admin/README.md` |
 | 网页版 | [`Linkory-{{V}}-web.zip`](https://github.com/{{REPO}}/releases/download/{{TAG}}/Linkory-{{V}}-web.zip) | 用户无需下载：把它解压到服务端的 `LINKORY_WEB_DIR`，浏览器直接访问服务端地址即可使用（同账号与各端互通），见部署文档 |
 | iOS | — | 需要 Apple 开发者签名，暂未提供 |
 

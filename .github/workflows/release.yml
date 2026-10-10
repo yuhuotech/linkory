@@ -263,6 +263,31 @@ jobs:
           name: pkg-web
           path: dist/*
 
+  # ------------------------------------------------------------------ Admin static bundle
+  admin:
+    name: Admin build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: linkory-admin/package-lock.json
+      - name: Build admin
+        working-directory: linkory-admin
+        run: |
+          npm ci
+          npm run build
+          V="${VERSION#v}"
+          mkdir -p ../dist
+          (cd dist && zip -qr "../../dist/Linkory-$V-admin.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-admin
+          path: dist/*
+
   # ------------------------------------------------------------------ Android
   android:
     name: Android apk
@@ -306,7 +331,7 @@ jobs:
   # ------------------------------------------------------------------ publish
   release:
     name: Publish GitHub Release
-    needs: [server, windows, macos, linux, android, web]
+    needs: [server, windows, macos, linux, android, web, admin]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:

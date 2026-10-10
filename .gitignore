@@ -27,3 +27,7 @@ __pycache__/
 
 # 生产部署脚本与配置（个人，不提交）
 tools/deploy_prod.sh
+
+# Admin frontend generated dependencies/artifacts
+/linkory-admin/node_modules/
+/linkory-admin/dist/

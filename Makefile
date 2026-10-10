@@ -42,3 +42,11 @@ deploy-status:
 	tools/deploy_server.sh status
 deploy-logs:
 	tools/deploy_server.sh logs -n 100
+
+.PHONY: admin-build admin-dev admin-test
+admin-build:
+	cd linkory-admin && npm ci && npm run build
+admin-dev:
+	cd linkory-admin && npm run dev
+admin-test:
+	cd linkory-admin && npm test
