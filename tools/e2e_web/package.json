@@ -1,0 +1,6 @@
+{
+  "name": "linkory-e2e-web",
+  "private": true,
+  "description": "Drives the browser side of the web <-> native interop test (see run.sh)",
+  "dependencies": { "puppeteer-core": "^24.0.0" }
+}

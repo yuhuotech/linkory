@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -160,8 +161,13 @@ class GuestWelcome extends ConsumerWidget {
                   final features = <Widget>[
 feature(LucideIcons.messageSquare, '跨网络互发消息', '连接同一服务器后，异地设备也能互发文字、链接与剪贴板，无需处于同一局域网；离线消息上线补发。'),
                 feature(LucideIcons.arrowLeftRight, '便捷传输文件', '拖进窗口即可发送，跨网络也能传输；中转文件仅流式转发，不在服务端落盘。'),
-                feature(LucideIcons.lockKeyhole, '加密直连，减少中转', '局域网文件优先 P2P 加密直连，失败自动回退中转；接收端校验文件完整性。'),
-                feature(LucideIcons.server, '选择适合你的服务', '可使用官方中转，也可连接自己部署的连信服务器。'),
+                // The browser edition is served by one particular server and cannot open LAN connections.
+                if (kIsWeb)
+                  feature(LucideIcons.laptop, '与各端客户端互通', '用同一账号在 Windows、macOS、Linux、Android 客户端登录后，设备会互相出现；浏览器里的文件一律经服务器中转。')
+                else ...[
+                  feature(LucideIcons.lockKeyhole, '加密直连，减少中转', '局域网文件优先 P2P 加密直连，失败自动回退中转；接收端校验文件完整性。'),
+                  feature(LucideIcons.server, '选择适合你的服务', '可使用官方中转，也可连接自己部署的连信服务器。'),
+                ],
                   ];
                   return Wrap(
                     spacing: 24,

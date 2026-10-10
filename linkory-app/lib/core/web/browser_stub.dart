@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'browser_types.dart';
+
 /// The origin that served the page ('' outside a browser).
 String browserOrigin() => '';
 
@@ -26,3 +30,18 @@ void browserNotifyClose(String tag) {}
 Future<bool> browserLockAcquire({required void Function() onLost, bool steal = false}) async => true;
 
 void browserReload() {}
+
+Future<List<BrowserFile>> browserPickFiles() async => const [];
+
+/// Turn a blob: URL (from drag and drop) into a file.
+Future<BrowserFile?> browserFileFromUrl(String url, String name) async => null;
+
+Stream<Uint8List> browserReadChunks(BrowserFile f, {int chunk = 4 << 20}) => const Stream.empty();
+
+BrowserUpload browserUpload(String url, Map<String, String> headers, BrowserFile f) => BrowserUpload(Future.value(0), () {});
+
+Future<BrowserResponse> browserFetch(String url, Map<String, String> headers) async =>
+    BrowserResponse(0, const Stream.empty(), () {});
+
+/// null = the user cancelled. Throws [StateError] when the file is too big for this browser.
+Future<BrowserSaveTarget?> browserOpenSaveTarget(String name, int size) async => null;

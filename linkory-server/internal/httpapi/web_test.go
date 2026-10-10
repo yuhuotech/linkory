@@ -109,3 +109,31 @@ func TestWebHandlerGzipsLargeAssets(t *testing.T) {
 		t.Fatal("images must not be recompressed")
 	}
 }
+
+func TestSameNamedDevicesGetADistinguishingSuffix(t *testing.T) {
+	h := setup(t)
+	call(h, "POST", "/api/v1/auth/register", "", map[string]any{"username": "erin", "password": "password123"})
+	var ids []string
+	for i := 0; i < 3; i++ {
+		code, out := call(h, "POST", "/api/v1/auth/login", "", map[string]any{"username": "erin", "password": "password123",
+			"device": map[string]any{"name": "Chrome · macOS", "type": "web", "public_key": fmt.Sprintf("pk%d", i)}})
+		if code != 200 {
+			t.Fatal(code, out)
+		}
+		ids = append(ids, out["access_token"].(string))
+	}
+	_, list := call(h, "GET", "/api/v1/devices", ids[0], nil)
+	var names []string
+	for _, d := range list["devices"].([]any) {
+		names = append(names, d.(map[string]any)["name"].(string))
+	}
+	want := map[string]bool{"Chrome · macOS": true, "Chrome · macOS (2)": true, "Chrome · macOS (3)": true}
+	if len(names) != 3 {
+		t.Fatalf("names %v", names)
+	}
+	for _, n := range names {
+		if !want[n] {
+			t.Fatalf("unexpected name %q in %v", n, names)
+		}
+	}
+}

@@ -16,11 +16,16 @@ import '../shared/format.dart';
 import 'models.dart';
 import 'realtime.dart';
 import 'session.dart';
+import 'web/browser.dart';
 
 enum Section { chats, devices, transfers, settings }
 
-/// File transfer needs the local file system (browser edition: not yet).
-const canTransferFiles = !kIsWeb;
+/// Something that can be stopped: a running upload or download.
+class _Handle {
+  _Handle(this._stop);
+  final void Function() _stop;
+  void close() => _stop();
+}
 
 class AppState {
   const AppState({
@@ -621,7 +626,9 @@ class AppStore extends Notifier<AppState> {
   // ---- file transfers ---------------------------------------------------------------------
 
   final Map<String, String> _localPaths = {}; // outgoing: task id -> source path
-  final Map<String, http.Client> _active = {};
+  final Map<String, _Handle> _active = {};
+  final Map<String, BrowserFile> _webFiles = {}; // browser edition: outgoing task id -> the picked file
+  final Map<String, BrowserSaveTarget> _webTargets = {}; // browser edition: incoming task id -> where it is written
   final Map<String, (DateTime, int)> _sample = {}; // speed sampling per task
 
   Future<void> sendFile(String peer, String path) async {
@@ -629,15 +636,42 @@ class AppStore extends Notifier<AppState> {
     final size = await f.length();
     final sum = (await crypto.sha256.bind(f.openRead()).first).toString();
     final name = path.split(Platform.pathSeparator).last;
+    final t = await _createTask(peer, name, size, sum);
+    if (t == null) return;
+    _localPaths[t.id] = path;
+    unawaited(_persist());
+  }
+
+  Future<Transfer?> _createTask(String peer, String name, int size, String sum) async {
     try {
       final j = await _api.request('POST', '/transfers', body: {'to_device_id': peer, 'file_name': name, 'size': size, 'sha256': sum});
       final t = Transfer.fromJson(j);
-      _localPaths[t.id] = path;
       _addTransfer(t);
-      unawaited(_persist());
+      return t;
     } on ApiException catch (e) {
       Log.warn('transfer', 'create failed ${e.code}');
       state = state.copyWith(error: e.code == 'receiver_offline' ? '目标设备不在线，暂不支持离线文件' : e.message);
+      return null;
+    }
+  }
+
+  /// Browser edition: the digest is computed from the file in chunks (the server needs it up front), then the
+  /// task is created; the bytes are uploaded when the receiver accepts.
+  Future<void> sendBrowserFile(String peer, BrowserFile f) async {
+    final acc = crypto.sha256.startChunkedConversion(_DigestSink((d) => _lastDigest = d));
+    await for (final chunk in browserReadChunks(f)) {
+      acc.add(chunk);
+    }
+    acc.close();
+    final t = await _createTask(peer, f.name, f.size, _lastDigest.toString());
+    if (t != null) _webFiles[t.id] = f;
+  }
+
+  crypto.Digest? _lastDigest;
+
+  Future<void> sendBrowserFiles(String peer, Iterable<BrowserFile> files) async {
+    for (final f in files) {
+      await sendBrowserFile(peer, f);
     }
   }
 
@@ -650,6 +684,8 @@ class AppStore extends Notifier<AppState> {
 
   /// PRD FILE-006: retry creates a new task from the original source file.
   Future<void> retryTransfer(Transfer t) async {
+    final web = _webFiles[t.id];
+    if (web != null) return sendBrowserFile(t.receiver, web);
     final path = _localPaths[t.id];
     if (path == null || !File(path).existsSync()) {
       state = state.copyWith(error: '源文件已不存在，无法重试');
@@ -659,7 +695,7 @@ class AppStore extends Notifier<AppState> {
   }
 
   bool canRetry(Transfer t) =>
-      t.sender == _self && !t.active && t.status != 'COMPLETED' && _localPaths[t.id] != null;
+      t.sender == _self && !t.active && t.status != 'COMPLETED' && (_localPaths[t.id] != null || _webFiles[t.id] != null);
 
   /// PRD 4.9: clearing records never deletes saved files.
   Future<void> clearFinishedTransfers() async {
@@ -774,11 +810,8 @@ class AppStore extends Notifier<AppState> {
     }
     _addTransfer(t);
     if (e.type == 'transfer.offer' && t.receiver == _self && !_hiddenTasks.contains(t.id)) {
-      if (!canTransferFiles) {
-        // The sender must not be left waiting for an answer this device can never give.
-        unawaited(reject(t).catchError((Object _) {}));
-        _incoming(t.sender, '想发送文件：${t.fileName}（网页版暂不支持接收文件，已自动拒绝）', file: true);
-      } else if (state.autoAccept) {
+      // A browser can only save a file the user has just agreed to (the save dialog needs their click).
+      if (state.autoAccept && !kIsWeb) {
         // Received on its own; the conversation is told when the file has arrived.
         unawaited(accept(t).catchError((Object err) {
           Log.warn('transfer', 'auto-accept failed: ${err.runtimeType}');
@@ -798,13 +831,33 @@ class AppStore extends Notifier<AppState> {
 
   Future<void> accept(Transfer t) async {
     if (!_accepting.add(t.id)) return; // already accepted (e.g. automatically)
+    if (kIsWeb) {
+      // Ask where to save first: the browser only allows the dialog right after the user's click.
+      try {
+        final target = await browserOpenSaveTarget(t.fileName, t.size);
+        if (target == null) {
+          _accepting.remove(t.id);
+          return; // dismissed: stay undecided, the offer is still there
+        }
+        _webTargets[t.id] = target;
+      } on StateError {
+        _accepting.remove(t.id);
+        state = state.copyWith(error: '这个浏览器一次最多接收 1 GB 的文件；请改用 Chrome / Edge，或使用客户端');
+        return;
+      }
+    }
     _lanAccepted.add(t.id); // before the request: the sender may connect the moment it hears of the accept
     try {
       await _api.request('POST', '/transfers/${t.id}/accept');
     } catch (_) {
       _lanAccepted.remove(t.id);
       _accepting.remove(t.id);
+      await _webTargets.remove(t.id)?.abort();
       rethrow;
+    }
+    if (kIsWeb) {
+      unawaited(_downloadWeb(t));
+      return;
     }
     // Pull through the relay right away; if the sender reaches us directly, that request is dropped.
     if (state.transferMode != 'lan') unawaited(_download(t));
@@ -812,6 +865,7 @@ class AppStore extends Notifier<AppState> {
 
   /// Sender: same-network direct first (with resume), relay as the fallback (PRD 4.7).
   Future<void> _startSend(Transfer t) async {
+    if (_webFiles.containsKey(t.id)) return _uploadWeb(t); // a browser cannot open direct connections
     final path = _localPaths[t.id];
     if (path == null) return;
     final mode = state.transferMode;
@@ -861,7 +915,7 @@ class AppStore extends Notifier<AppState> {
     final path = _localPaths[t.id];
     if (path == null) return;
     final client = http.Client();
-    _active[t.id] = client;
+    _active[t.id] = _Handle(client.close);
     try {
       final req = http.StreamedRequest('PUT', _api.uri('/transfers/${t.id}/data'))
         ..headers.addAll(_api.authHeaders())
@@ -881,7 +935,7 @@ class AppStore extends Notifier<AppState> {
   /// Receiver: write a .part temp file, verify SHA-256, then rename (PRD 4.6 rules).
   Future<void> _download(Transfer t) async {
     final client = http.Client();
-    _active[t.id] = client;
+    _active[t.id] = _Handle(client.close);
     File? part;
     try {
       final dir = Directory(state.saveDir);
@@ -922,6 +976,53 @@ class AppStore extends Notifier<AppState> {
     } finally {
       _active.remove(t.id);
       client.close();
+    }
+  }
+
+  Future<void> _uploadWeb(Transfer t) async {
+    final f = _webFiles[t.id];
+    if (f == null) return;
+    try {
+      await _api.request('GET', '/devices'); // the access token may have expired while the offer was waiting
+      final up = browserUpload(_api.uri('/transfers/${t.id}/data').toString(), {..._api.authHeaders(), 'Content-Type': 'application/octet-stream'}, f);
+      _active[t.id] = _Handle(up.abort);
+      await up.status;
+    } catch (_) {
+      // The server marks the task FAILED and notifies both ends; that event updates the UI.
+    } finally {
+      _active.remove(t.id);
+    }
+  }
+
+  Future<void> _downloadWeb(Transfer t) async {
+    final target = _webTargets.remove(t.id);
+    if (target == null) return;
+    try {
+      final res = await browserFetch(_api.uri('/transfers/${t.id}/data').toString(), _api.authHeaders());
+      _active[t.id] = _Handle(res.abort);
+      if (res.status != 200) throw ApiException(res.status, 'download', 'download failed');
+      crypto.Digest? digest;
+      final acc = crypto.sha256.startChunkedConversion(_DigestSink((d) => digest = d));
+      var n = 0;
+      await for (final chunk in res.body) {
+        await target.write(chunk);
+        acc.add(chunk);
+        n += chunk.length;
+      }
+      acc.close();
+      if (n != t.size || digest.toString() != t.sha256) {
+        await target.abort();
+        Log.warn('transfer', 'checksum mismatch ${t.id}');
+        await _fail(t, 'checksum mismatch');
+        return;
+      }
+      await target.finish();
+      await _api.request('POST', '/transfers/${t.id}/complete');
+    } catch (e) {
+      Log.warn('transfer', 'download aborted: ${e.runtimeType}');
+      await target.abort();
+    } finally {
+      _active.remove(t.id);
     }
   }
 

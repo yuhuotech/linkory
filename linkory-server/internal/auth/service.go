@@ -147,12 +147,47 @@ func (s *Service) ensureDevice(ctx context.Context, uid uint64, d DeviceInfo) (s
 			return "", err
 		}
 	}
+	name, err := s.uniqueDeviceName(ctx, uid, name)
+	if err != nil {
+		return "", err
+	}
 	id := uuid.NewString()
 	// Informational fields come from the client (Android reports a long kernel string): clip them
 	// to the column sizes instead of failing the login.
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO devices(id,user_id,name,device_type,os_version,app_version,public_key) VALUES(?,?,?,?,?,?,?)`,
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO devices(id,user_id,name,device_type,os_version,app_version,public_key) VALUES(?,?,?,?,?,?,?)`,
 		id, uid, name, d.Type, clip(d.OSVersion, 64), clip(d.AppVersion, 32), d.PublicKey)
 	return id, err
+}
+
+// uniqueDeviceName keeps the devices of one account tellable apart: two browsers both calling themselves
+// "Chrome · macOS" become "Chrome · macOS" and "Chrome · macOS (2)". Only the newcomer is renamed (the user can rename it).
+func (s *Service) uniqueDeviceName(ctx context.Context, uid uint64, name string) (string, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT name FROM devices WHERE user_id=? AND revoked_at IS NULL`, uid)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	taken := map[string]bool{}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return "", err
+		}
+		taken[n] = true
+	}
+	if !taken[name] {
+		return name, nil
+	}
+	for i := 2; ; i++ {
+		suffix := fmt.Sprintf(" (%d)", i)
+		base := []rune(name)
+		if len(base)+len([]rune(suffix)) > 64 {
+			base = base[:64-len([]rune(suffix))]
+		}
+		if cand := string(base) + suffix; !taken[cand] {
+			return cand, nil
+		}
+	}
 }
 
 // MaxWebDevices caps the browser devices of one account. A browser has no stable hardware identity (clearing
