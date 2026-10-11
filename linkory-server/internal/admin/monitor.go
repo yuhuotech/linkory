@@ -33,7 +33,10 @@ type Sample struct {
 	CPUs         int       `json:"cpus"`
 }
 
-const monitorHistory = 60 // samples kept (5 s apart = 5 minutes)
+const (
+	monitorInterval = 5 * time.Second
+	monitorHistory  = 60 // samples kept (monitorInterval apart = 5 minutes)
+)
 
 type monitor struct {
 	mu       sync.Mutex
@@ -130,7 +133,7 @@ func (s *Service) sample() Sample {
 // runMonitor samples every 5 seconds so the numbers do not depend on how many consoles are open.
 func (s *Service) runMonitor(ctx context.Context) {
 	s.sample()
-	tick := time.NewTicker(5 * time.Second)
+	tick := time.NewTicker(monitorInterval)
 	defer tick.Stop()
 	for {
 		select {

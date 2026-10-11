@@ -80,6 +80,9 @@ func (s *Service) setPolicy(w http.ResponseWriter, r *http.Request) {
 	apiutil.JSON(w, 200, in.Policy)
 }
 
+// previewTTL is how long a deletion preview stays valid before it must be regenerated.
+const previewTTL = 10 * time.Minute
+
 const terminalSQL = `status IN ('COMPLETED','REJECTED','CANCELLED','FAILED','EXPIRED')`
 
 func predicates(spec Spec) (string, []any, string, []any) {
@@ -198,7 +201,7 @@ func (s *Service) preview(w http.ResponseWriter, r *http.Request) {
 	id := randomToken()
 	raw, _ := json.Marshal(spec)
 	cr, _ := json.Marshal(counts)
-	exp := time.Now().UTC().Add(10 * time.Minute)
+	exp := time.Now().UTC().Add(previewTTL)
 	_, e = s.DB.ExecContext(r.Context(), `INSERT INTO admin_previews(id,admin_id,spec_json,counts_json,expires_at) VALUES(?,?,?,?,?)`, id, actor(r).ID, raw, cr, exp)
 	if e != nil {
 		apiutil.Fail(w, e)

@@ -41,8 +41,11 @@ type Service struct {
 	limiter *ratelimit.Limiter
 }
 
+// DefaultRefreshGrace lets a client whose refresh response was lost retry with the old token.
+const DefaultRefreshGrace = 20 * time.Second
+
 func NewService(db *sql.DB, secret []byte, access, refresh time.Duration) *Service {
-	return &Service{DB: db, Secret: secret, AccessTTL: access, RefreshTTL: refresh, RefreshGrace: 20 * time.Second, limiter: ratelimit.New(ratelimit.DefaultWindow, ratelimit.DefaultMaxFailures)}
+	return &Service{DB: db, Secret: secret, AccessTTL: access, RefreshTTL: refresh, RefreshGrace: DefaultRefreshGrace, limiter: ratelimit.New(ratelimit.DefaultWindow, ratelimit.DefaultMaxFailures)}
 }
 
 type DeviceInfo struct {

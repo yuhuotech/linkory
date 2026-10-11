@@ -23,7 +23,11 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-const cookieName = "linkory_admin_session"
+const (
+	cookieName = "linkory_admin_session"
+	// sessionTTL is how long an admin session lasts before a fresh login is required.
+	sessionTTL = 8 * time.Hour
+)
 
 type Service struct {
 	TrustedProxies     []*net.IPNet
@@ -310,7 +314,7 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	}
 	token := randomToken()
 	p.CSRF = csrf(token)
-	p.Expires = time.Now().UTC().Add(8 * time.Hour)
+	p.Expires = time.Now().UTC().Add(sessionTTL)
 	tx, err := s.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		apiutil.Fail(w, err)

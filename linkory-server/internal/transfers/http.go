@@ -52,6 +52,9 @@ var errCancelled = errors.New("transfer cancelled")
 
 const peerWait = 60 * time.Second
 
+// sweepInterval is how often stale transfer tasks are expired.
+const sweepInterval = 30 * time.Second
+
 func (h *Handler) Routes(mux *http.ServeMux) {
 	h.relays = map[string]*relay{}
 	m := h.Auth.Middleware
@@ -70,7 +73,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 
 // RunSweeper periodically expires stale tasks and tells both ends.
 func (h *Handler) RunSweeper(ctx context.Context) {
-	t := time.NewTicker(30 * time.Second)
+	t := time.NewTicker(sweepInterval)
 	defer t.Stop()
 	for {
 		select {
