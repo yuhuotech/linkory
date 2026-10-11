@@ -345,18 +345,21 @@ class DesktopShell with TrayListener, WindowListener {
       } catch (e) {
         Log.warn('quit', '$name failed: $e');
       }
+      Log.flush(); // the process may die in the next step
     }
 
     Log.info('quit', 'begin');
     await step('hide', windowManager.hide);
     Timer(const Duration(seconds: 3), () {
       Log.warn('quit', 'teardown still running after ${sw.elapsedMilliseconds}ms, exit(0)');
+      Log.flush();
       exit(0);
     });
     await step('tray.destroy', trayManager.destroy);
     await step('preventClose.off', () => windowManager.setPreventClose(false));
     await step('window.destroy', windowManager.destroy);
     Log.info('quit', 'end ${sw.elapsedMilliseconds}ms');
+    Log.flush();
   }
 
   @override

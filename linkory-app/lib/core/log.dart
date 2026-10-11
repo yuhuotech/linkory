@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -33,10 +34,26 @@ class Log {
   static void warn(String tag, String msg) => _w('WARN', tag, msg);
   static void error(String tag, Object e, [StackTrace? st]) => _w('ERROR', tag, '$e${st == null ? '' : '\n$st'}');
 
+  static final _buf = StringBuffer();
+  static Timer? _flushTimer;
+
   static void _w(String level, String tag, String msg) {
     debugPrint('[$level] $tag $msg');
+    if (_file == null) return;
+    _buf.write('${DateTime.now().toIso8601String()} $level $tag $msg\n');
+    // Coalesce bursts into one write so logging never blocks the UI thread per line.
+    _flushTimer ??= Timer(const Duration(milliseconds: 250), flush);
+  }
+
+  /// Writes everything buffered so far. Call before the process exits.
+  static void flush() {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    if (_buf.isEmpty) return;
+    final text = _buf.toString();
+    _buf.clear();
     try {
-      _file?.writeAsStringSync('${DateTime.now().toIso8601String()} $level $tag $msg\n', mode: FileMode.append);
+      _file?.writeAsStringSync(text, mode: FileMode.append);
     } catch (_) {}
   }
 }
