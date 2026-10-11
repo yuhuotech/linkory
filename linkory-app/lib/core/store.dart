@@ -3,10 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 
 import 'api.dart';
 import 'lan/lan.dart';
@@ -15,6 +13,7 @@ import 'notifications.dart';
 import '../shared/format.dart';
 import 'models.dart';
 import 'realtime.dart';
+import 'relay_transfer.dart';
 import 'session.dart';
 import 'version.dart';
 import 'web/browser.dart';
@@ -321,7 +320,7 @@ class AppStore extends Notifier<AppState> {
           final t = _transfer(id);
           if (t == null) return false;
           try {
-            final target = await _uniqueTarget(Directory(state.saveDir), t.fileName);
+            final target = await uniqueTarget(Directory(state.saveDir), t.fileName);
             await part.rename(target.path);
             _savedPaths[id] = target.path;
             t.savedPath = target.path;
@@ -646,7 +645,7 @@ class AppStore extends Notifier<AppState> {
   Future<void> sendFile(String peer, String path) async {
     final f = File(path);
     final size = await f.length();
-    final sum = (await crypto.sha256.bind(f.openRead()).first).toString();
+    final sum = await sha256Hex(f.openRead());
     final name = path.split(Platform.pathSeparator).last;
     final t = await _createTask(peer, name, size, sum);
     if (t == null) return;
@@ -670,16 +669,10 @@ class AppStore extends Notifier<AppState> {
   /// Browser edition: the digest is computed from the file in chunks (the server needs it up front), then the
   /// task is created; the bytes are uploaded when the receiver accepts.
   Future<void> sendBrowserFile(String peer, BrowserFile f) async {
-    final acc = crypto.sha256.startChunkedConversion(_DigestSink((d) => _lastDigest = d));
-    await for (final chunk in browserReadChunks(f)) {
-      acc.add(chunk);
-    }
-    acc.close();
-    final t = await _createTask(peer, f.name, f.size, _lastDigest.toString());
+    final sum = await sha256Hex(browserReadChunks(f));
+    final t = await _createTask(peer, f.name, f.size, sum);
     if (t != null) _webFiles[t.id] = f;
   }
-
-  crypto.Digest? _lastDigest;
 
   Future<void> sendBrowserFiles(String peer, Iterable<BrowserFile> files) async {
     for (final f in files) {
@@ -926,68 +919,24 @@ class AppStore extends Notifier<AppState> {
   Future<void> _upload(Transfer t) async {
     final path = _localPaths[t.id];
     if (path == null) return;
-    final client = http.Client();
-    _active[t.id] = _Handle(client.close);
     try {
-      final req = http.StreamedRequest('PUT', _api.uri('/transfers/${t.id}/data'))
-        ..headers.addAll(_api.authHeaders())
-        ..headers['Content-Type'] = 'application/octet-stream'
-        ..contentLength = t.size;
-      File(path).openRead().listen(req.sink.add, onDone: req.sink.close, onError: req.sink.addError, cancelOnError: true);
-      final res = await client.send(req);
-      await res.stream.drain<void>();
-    } catch (_) {
-      // The server marks the task FAILED and notifies both ends; that event updates the UI.
+      await relayUpload(_api, t, path, (cancel) => _active[t.id] = _Handle(cancel));
     } finally {
       _active.remove(t.id);
-      client.close();
     }
   }
 
-  /// Receiver: write a .part temp file, verify SHA-256, then rename (PRD 4.6 rules).
   Future<void> _download(Transfer t) async {
-    final client = http.Client();
-    _active[t.id] = _Handle(client.close);
-    File? part;
     try {
-      final dir = Directory(state.saveDir);
-      await dir.create(recursive: true);
-      part = File('${dir.path}${Platform.pathSeparator}.${t.id}.part');
-      final req = http.Request('GET', _api.uri('/transfers/${t.id}/data'))..headers.addAll(_api.authHeaders());
-      final res = await client.send(req);
-      if (res.statusCode != 200) throw ApiException(res.statusCode, 'download', 'download failed');
-      final sink = part.openWrite();
-      crypto.Digest? digest;
-      final acc = crypto.sha256.startChunkedConversion(_DigestSink((d) => digest = d));
-      var n = 0;
-      await for (final chunk in res.stream) {
-        sink.add(chunk);
-        acc.add(chunk);
-        n += chunk.length;
+      final r = await relayDownload(_api, t, Directory(state.saveDir), (cancel) => _active[t.id] = _Handle(cancel));
+      if (r.status == DownloadStatus.saved) {
+        _savedPaths[t.id] = r.path!;
+        _transfer(t.id)?.savedPath = r.path;
+        unawaited(_persist());
       }
-      await sink.close();
-      acc.close();
-      if (n != t.size || digest.toString() != t.sha256) {
-        await part.delete();
-        Log.warn('transfer', 'checksum mismatch ${t.id}');
-        await _fail(t, 'checksum mismatch');
-        return;
-      }
-      final target = await _uniqueTarget(dir, t.fileName);
-      await part.rename(target.path);
-      _savedPaths[t.id] = target.path;
-      _transfer(t.id)?.savedPath = target.path;
-      unawaited(_persist());
-      await _api.request('POST', '/transfers/${t.id}/complete');
-    } on FileSystemException catch (e) {
-      await _fail(t, e.message.contains('space') ? 'disk full' : 'write error');
-      await _tryDelete(part);
-    } catch (e) {
-      Log.warn('transfer', 'download aborted: ${e.runtimeType}');
-      await _tryDelete(part);
+      await _finishDownload(t, r);
     } finally {
       _active.remove(t.id);
-      client.close();
     }
   }
 
@@ -995,12 +944,7 @@ class AppStore extends Notifier<AppState> {
     final f = _webFiles[t.id];
     if (f == null) return;
     try {
-      await _api.request('GET', '/devices'); // the access token may have expired while the offer was waiting
-      final up = browserUpload(_api.uri('/transfers/${t.id}/data').toString(), {..._api.authHeaders(), 'Content-Type': 'application/octet-stream'}, f);
-      _active[t.id] = _Handle(up.abort);
-      await up.status;
-    } catch (_) {
-      // The server marks the task FAILED and notifies both ends; that event updates the UI.
+      await webUpload(_api, t, f, (cancel) => _active[t.id] = _Handle(cancel));
     } finally {
       _active.remove(t.id);
     }
@@ -1010,56 +954,34 @@ class AppStore extends Notifier<AppState> {
     final target = _webTargets.remove(t.id);
     if (target == null) return;
     try {
-      final res = await browserFetch(_api.uri('/transfers/${t.id}/data').toString(), _api.authHeaders());
-      _active[t.id] = _Handle(res.abort);
-      if (res.status != 200) throw ApiException(res.status, 'download', 'download failed');
-      crypto.Digest? digest;
-      final acc = crypto.sha256.startChunkedConversion(_DigestSink((d) => digest = d));
-      var n = 0;
-      await for (final chunk in res.body) {
-        await target.write(chunk);
-        acc.add(chunk);
-        n += chunk.length;
-      }
-      acc.close();
-      if (n != t.size || digest.toString() != t.sha256) {
-        await target.abort();
-        Log.warn('transfer', 'checksum mismatch ${t.id}');
-        await _fail(t, 'checksum mismatch');
-        return;
-      }
-      await target.finish();
-      await _api.request('POST', '/transfers/${t.id}/complete');
-    } catch (e) {
-      Log.warn('transfer', 'download aborted: ${e.runtimeType}');
-      await target.abort();
+      await _finishDownload(t, await webDownload(_api, t, target, (cancel) => _active[t.id] = _Handle(cancel)));
     } finally {
       _active.remove(t.id);
     }
   }
 
-  Future<void> _tryDelete(File? f) async {
-    try {
-      await f?.delete();
-    } catch (_) {}
+  /// Tells the server how a download ended: complete on success, FAILED with a reason when it was our
+  /// fault; an abort (cancelled / connection lost) is left to the server's own state machine.
+  Future<void> _finishDownload(Transfer t, DownloadOutcome r) async {
+    switch (r.status) {
+      case DownloadStatus.saved:
+        await _api.request('POST', '/transfers/${t.id}/complete');
+      case DownloadStatus.checksumMismatch:
+        Log.warn('transfer', 'checksum mismatch ${t.id}');
+        await _fail(t, 'checksum mismatch');
+      case DownloadStatus.diskFull:
+        await _fail(t, 'disk full');
+      case DownloadStatus.writeError:
+        await _fail(t, 'write error');
+      case DownloadStatus.aborted:
+        break;
+    }
   }
 
   Future<void> _fail(Transfer t, String reason) async {
     try {
       await _api.request('POST', '/transfers/${t.id}/fail', body: {'reason': reason});
     } on ApiException catch (_) {}
-  }
-
-  // Name conflicts never overwrite: "a.txt" -> "a (1).txt".
-  Future<File> _uniqueTarget(Directory dir, String name) async {
-    final sep = Platform.pathSeparator;
-    final dot = name.lastIndexOf('.');
-    final stem = dot > 0 ? name.substring(0, dot) : name, ext = dot > 0 ? name.substring(dot) : '';
-    var f = File('${dir.path}$sep$name');
-    for (var i = 1; await f.exists(); i++) {
-      f = File('${dir.path}$sep$stem ($i)$ext');
-    }
-    return f;
   }
 
   Future<void> setSaveDir(String dir) async {
@@ -1079,13 +1001,4 @@ class AppStore extends Notifier<AppState> {
     if (state.selectedPeer == id) state = state.copyWith(selectedPeer: null);
     await loadDevices();
   }
-}
-
-class _DigestSink implements Sink<crypto.Digest> {
-  _DigestSink(this.f);
-  final void Function(crypto.Digest) f;
-  @override
-  void add(crypto.Digest d) => f(d);
-  @override
-  void close() {}
 }
