@@ -20,7 +20,7 @@ Future<void> showImageViewer(
   barrierDismissible: false,
   barrierLabel: '关闭图片预览',
   barrierColor: Colors.black.withValues(alpha: .88),
-  transitionDuration: const Duration(milliseconds: 90),
+  transitionDuration: Motion.fast,
   transitionBuilder: (_, a, _, child) =>
       FadeTransition(opacity: a, child: child),
   pageBuilder: (_, _, _) =>

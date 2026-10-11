@@ -22,6 +22,10 @@ void Function(String message)? lanLog;
 
 const _magic = [0x4c, 0x4e, 0x4b, 0x31]; // "LNK1"
 const lanChunk = 256 * 1024;
+
+const _handshakeTimeout = Duration(seconds: 10); // each step of the HMAC handshake
+const _frameTimeout = Duration(seconds: 30); // the next frame header / body while receiving
+const _finalAckTimeout = Duration(seconds: 60); // the receiver verifies the whole file before acking
 const _maxFrame = lanChunk + 64;
 final _rnd = Random.secure();
 
@@ -255,7 +259,7 @@ Future<LanSendOutcome> lanSend({
       ...end,
     ]);
     await sock.flush();
-    final ack = await r.read(1, timeout: const Duration(seconds: 60));
+    final ack = await r.read(1, timeout: _finalAckTimeout);
     return ack[0] == 1 ? LanSendOutcome.ok : LanSendOutcome.rejected;
   } catch (e) {
     lanLog?.call(
@@ -389,7 +393,7 @@ class LanListener {
     try {
       final hello = await r.read(
         4 + 16 + 16,
-        timeout: const Duration(seconds: 10),
+        timeout: _handshakeTimeout,
       );
       if (!_eq(hello.sublist(0, 4), _magic)) return;
       final id = hello.sublist(4, 20), ns = hello.sublist(20);
@@ -415,7 +419,7 @@ class LanListener {
         ..._u64(have),
         ..._proof(task.secret, 'R', id, ns, nr, have),
       ]);
-      final sp = await r.read(32, timeout: const Duration(seconds: 10));
+      final sp = await r.read(32, timeout: _handshakeTimeout);
       if (!_eq(sp, _proof(task.secret, 'S', id, ns, nr, have))) return;
       if (!_active.add(taskId)) {
         lanLog?.call('recv: task already has a live session');
@@ -440,11 +444,11 @@ class LanListener {
       try {
         while (!ended) {
           final len = ByteData.sublistView(
-            await r.read(4, timeout: const Duration(seconds: 30)),
+            await r.read(4, timeout: _frameTimeout),
           ).getUint32(0);
           if (len > _maxFrame) throw const FormatException('frame too large');
           final (type, payload) = await aead.open(
-            await r.read(len, timeout: const Duration(seconds: 30)),
+            await r.read(len, timeout: _frameTimeout),
           );
           if (type == 1) {
             ended = true;

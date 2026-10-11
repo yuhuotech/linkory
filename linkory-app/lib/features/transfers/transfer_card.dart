@@ -336,7 +336,7 @@ class _ImagePreviewState extends State<ImagePreview> {
                     cacheWidth: 640, // ≈ 2× the card width: sharp on HiDPI, tiny in memory
                     gaplessPlayback: true,
                   // Large photos decode off the UI thread; fade in when ready instead of popping.
-                  frameBuilder: (_, child, frame, sync) => sync ? child : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 160), child: child),
+                  frameBuilder: (_, child, frame, sync) => sync ? child : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: Motion.normal, child: child),
                     errorBuilder: (_, _, _) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (mounted) setState(() => _failed = true);
@@ -346,7 +346,7 @@ class _ImagePreviewState extends State<ImagePreview> {
                   ),
                   AnimatedOpacity(
                     opacity: _hover ? 1 : 0,
-                    duration: const Duration(milliseconds: 100),
+                    duration: Motion.fast,
                     child: ColoredBox(
                       color: Colors.black26,
                       child: Center(

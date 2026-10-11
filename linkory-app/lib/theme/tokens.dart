@@ -139,6 +139,12 @@ class LinkoryColors extends ThemeExtension<LinkoryColors> {
   LinkoryColors lerp(ThemeExtension<LinkoryColors>? other, double t) => t < 0.5 ? this : (other as LinkoryColors? ?? this);
 }
 
+/// Animation durations (UI_SPEC: no animation longer than 150ms).
+class Motion {
+  static const fast = Duration(milliseconds: 100); // hover / press feedback
+  static const normal = Duration(milliseconds: 150); // fades, scrolling into view
+}
+
 /// Radii (tailwind: control 6, panel 10, dialog 14).
 class Radii {
   static const control = 6.0;

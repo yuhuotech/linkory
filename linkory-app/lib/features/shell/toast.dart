@@ -35,7 +35,7 @@ class MessageToast extends ConsumerWidget {
     final c = context.c;
     final peer = t == null ? null : ref.watch(storeProvider.select((s) => s.device(t.peerId)));
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 160),
+      duration: Motion.normal,
       switchInCurve: Curves.easeOut,
       transitionBuilder: (child, a) => FadeTransition(
         opacity: a,

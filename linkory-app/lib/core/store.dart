@@ -20,6 +20,12 @@ import 'web/browser.dart';
 
 enum Section { chats, devices, transfers, settings }
 
+const _toastLifetime = Duration(seconds: 5);
+const _lanReportEvery = Duration(seconds: 60); // re-report the LAN endpoint: the network may have changed
+const _alertCoalesce = Duration(milliseconds: 600); // bursts of messages become one notification
+const _ackTimeout = Duration(seconds: 15); // a sent message with no server ack is marked failed
+const _lanRetryDelay = Duration(seconds: 1); // between direct-connect attempts
+
 /// Something that can be stopped: a running upload or download.
 class _Handle {
   _Handle(this._stop);
@@ -141,7 +147,7 @@ class ToastNotifier extends Notifier<Toast?> {
   void show(String peerId, String title, String body, int count) {
     _t?.cancel();
     state = Toast(id: ++_n, peerId: peerId, title: title, body: body, count: count);
-    _t = Timer(const Duration(seconds: 5), dismiss);
+    _t = Timer(_toastLifetime, dismiss);
   }
 
   void dismiss() {
@@ -280,7 +286,7 @@ class AppStore extends Notifier<AppState> {
       Log.info('lan', 'listening on ${_lan!.port}');
       await _reportLan();
       _lanTimer?.cancel();
-      _lanTimer = Timer.periodic(const Duration(seconds: 60), (_) => _reportLan()); // network changes
+      _lanTimer = Timer.periodic(_lanReportEvery, (_) => _reportLan()); // network changes
     } catch (e) {
       Log.warn('lan', 'listener unavailable: ${e.runtimeType}');
     }
@@ -513,7 +519,7 @@ class AppStore extends Notifier<AppState> {
     final prev = _alerts[peerId];
     prev?.timer.cancel();
     final n = (prev?.n ?? 0) + 1;
-    _alerts[peerId] = (n: n, title: title, body: body, timer: Timer(const Duration(milliseconds: 600), () => _flushAlert(peerId)));
+    _alerts[peerId] = (n: n, title: title, body: body, timer: Timer(_alertCoalesce, () => _flushAlert(peerId)));
   }
 
   void _flushAlert(String peerId) {
@@ -561,8 +567,8 @@ class AppStore extends Notifier<AppState> {
       _upsert(m);
       return;
     }
-    // No ack within 15s → failed; the user can retry safely.
-    Future.delayed(const Duration(seconds: 15), () {
+    // No ack in time → failed; the user can retry safely.
+    Future.delayed(_ackTimeout, () {
       final cur = state.messages[m.peerId]?.where((x) => x.clientId == m.clientId).firstOrNull;
       if (cur != null && cur.status == MsgStatus.sending) {
         cur.status = MsgStatus.failed;
@@ -891,7 +897,7 @@ class AppStore extends Notifier<AppState> {
         }
         if (!(_transfer(t.id)?.active ?? false)) return; // cancelled meanwhile
         if (out == LanSendOutcome.rejected || out == LanSendOutcome.unreachable) break;
-        await Future<void>.delayed(const Duration(seconds: 1));
+        await Future<void>.delayed(_lanRetryDelay);
       }
       if (mode == 'lan') {
         state = state.copyWith(error: '局域网直连失败（当前设置为仅局域网）');

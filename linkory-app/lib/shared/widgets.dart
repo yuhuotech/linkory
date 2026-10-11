@@ -97,7 +97,7 @@ class _BrandHomeButtonState extends State<BrandHomeButton> {
           onTapCancel: () => setState(() => _down = false),
           child: AnimatedScale(
             scale: _down ? .96 : 1,
-            duration: const Duration(milliseconds: 100),
+            duration: Motion.fast,
             child: const BrandLogo(),
           ),
         ),
@@ -170,7 +170,7 @@ class _LButtonState extends State<LButton> {
         onTap: enabled ? widget.onPressed : null,
         child: AnimatedScale(
           scale: _down ? .96 : 1,
-          duration: const Duration(milliseconds: 100),
+          duration: Motion.fast,
           child: Opacity(
             opacity: enabled ? 1 : .5,
             child: Container(
@@ -556,7 +556,7 @@ class _PanelCardState extends State<PanelCard> {
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
+        duration: Motion.normal,
         padding: widget.padding,
         decoration: BoxDecoration(
           color: widget.active ? c.directSoft : c.bgCard,
@@ -772,7 +772,7 @@ class LSwitch extends StatelessWidget {
       child: GestureDetector(
         onTap: onChanged == null ? null : () => onChanged!(!value),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
+          duration: Motion.fast,
           width: 36,
           height: 20,
           padding: const EdgeInsets.all(2),

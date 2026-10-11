@@ -13,12 +13,10 @@ class OfficialServer {
     (candidate) => candidate.replaceFirst(RegExp(r'/+$'), '') == address.replaceFirst(RegExp(r'/+$'), ''));
 }
 
-const officialServerUrl = String.fromEnvironment(
-  'LINKORY_OFFICIAL_SERVER',
-  defaultValue: 'https://linkory.yuhuotech.com',
-);
+const _defaultOfficialServer = 'https://linkory.yuhuotech.com';
+const officialServerUrl = String.fromEnvironment('LINKORY_OFFICIAL_SERVER', defaultValue: _defaultOfficialServer);
 const legacyOfficialServerUrl = 'https://linkory.dev99.cn';
-const officialServerAliases = officialServerUrl == 'https://linkory.yuhuotech.com'
+const officialServerAliases = officialServerUrl == _defaultOfficialServer
     ? [legacyOfficialServerUrl] : <String>[];
 
 /// Both official domains share the same database/device identity. Other custom

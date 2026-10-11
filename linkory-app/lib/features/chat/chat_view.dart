@@ -72,7 +72,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
   }
 
   void _toBottom() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) _scroll.animateTo(0, duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
+        if (_scroll.hasClients) _scroll.animateTo(0, duration: Motion.normal, curve: Curves.easeOut);
       });
 
   Future<void> _sendClipboard() async {

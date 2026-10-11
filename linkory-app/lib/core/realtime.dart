@@ -18,6 +18,10 @@ class WsEvent {
 }
 
 /// WebSocket connection: 30s ping, 90s silence = dead, exponential backoff up to 60s (PRD 4.3).
+const _pingEvery = Duration(seconds: 30);
+const _watchdogEvery = Duration(seconds: 10);
+const _silenceLimit = Duration(seconds: 90); // no frame at all for this long = dead connection
+
 class Realtime {
   Realtime(this.api);
   final ApiClient api;
@@ -67,9 +71,9 @@ class Realtime {
       _attempt = 0;
       _lastRx = DateTime.now();
       _set(LinkState.connected);
-      _ping = Timer.periodic(const Duration(seconds: 30), (_) => send('ping', {}));
-      _watchdog = Timer.periodic(const Duration(seconds: 10), (_) {
-        if (DateTime.now().difference(_lastRx) > const Duration(seconds: 90)) _drop();
+      _ping = Timer.periodic(_pingEvery, (_) => send('ping', {}));
+      _watchdog = Timer.periodic(_watchdogEvery, (_) {
+        if (DateTime.now().difference(_lastRx) > _silenceLimit) _drop();
       });
       ch.stream.listen(_onFrame, onDone: _drop, onError: (_) => _drop(), cancelOnError: true);
     } catch (_) {

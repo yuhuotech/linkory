@@ -91,7 +91,7 @@
 - **对话框**：圆角 14、`shadowLg`、遮罩 `overlay`；标题 Type.title；底部按钮右对齐，主按钮 solid，取消 neutral/quiet。
 - **提示 SnackBar**：floating，宽 360，错误文案原因优先。
 - **状态表达**：在线 success 圆点；传输中 action；校验中 warning；完成 success；失败/取消用 danger 文字或 dangerSoft 底徽标。不要仅靠颜色，必须配文字或图标。
-- **交互反馈**：悬停变底色（无水波纹，主题已关闭 splash/highlight）；点击缩放 0.96；动画时长 ≤150ms。
+- **交互反馈**：悬停变底色（无水波纹，主题已关闭 splash/highlight）；点击缩放 0.96；动画时长 ≤150ms，统一用 `Motion.fast`(100ms) / `Motion.normal`(150ms)。
 
 ## 7. 页面清单与约定
 
