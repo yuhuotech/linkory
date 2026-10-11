@@ -13,13 +13,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/linkory/linkory-server/internal/apiutil"
 	"github.com/linkory/linkory-server/internal/audit"
 	"github.com/linkory/linkory-server/internal/messaging"
+	"github.com/linkory/linkory-server/internal/ratelimit"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -33,15 +33,14 @@ type Service struct {
 	SecureCookie       bool
 	Started            time.Time
 	DefaultOfflineDays int
-	mu                 sync.Mutex
-	failures           map[string][]time.Time
+	limiter            *ratelimit.Limiter
 	mon                monitor
 }
 
 func NewService(db *sql.DB, hub *messaging.Hub, offlineDays int) *Service {
 	_, v4, _ := net.ParseCIDR("127.0.0.1/32")
 	_, v6, _ := net.ParseCIDR("::1/128")
-	return &Service{TrustedProxies: []*net.IPNet{v4, v6}, DB: db, Hub: hub, SecureCookie: true, Started: time.Now().UTC(), DefaultOfflineDays: offlineDays, failures: map[string][]time.Time{}}
+	return &Service{TrustedProxies: []*net.IPNet{v4, v6}, DB: db, Hub: hub, SecureCookie: true, Started: time.Now().UTC(), DefaultOfflineDays: offlineDays, limiter: ratelimit.New(ratelimit.DefaultWindow, ratelimit.DefaultMaxFailures)}
 }
 
 type principal struct {
@@ -177,37 +176,6 @@ func (s *Service) ListAccounts(ctx context.Context) ([]Account, error) {
 	return out, rows.Err()
 }
 
-// recentLocked prunes and returns the failures still inside the rate-limit window for one key.
-// Callers must hold s.mu.
-func (s *Service) recentLocked(key string) []time.Time {
-	cut := time.Now().Add(-5 * time.Minute)
-	var kept []time.Time
-	for _, t := range s.failures[key] {
-		if t.After(cut) {
-			kept = append(kept, t)
-		}
-	}
-	s.failures[key] = kept
-	return kept
-}
-
-// pruneFailures forgets login failures older than the rate-limit window so the map cannot grow without bound.
-func (s *Service) pruneFailures() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for k, list := range s.failures {
-		keep := false
-		for _, t := range list {
-			if time.Since(t) < 5*time.Minute {
-				keep = true
-				break
-			}
-		}
-		if !keep {
-			delete(s.failures, k)
-		}
-	}
-}
 func (s *Service) SetTrustedProxies(values []string) error {
 	out := []*net.IPNet{}
 	for _, value := range values {
@@ -230,17 +198,12 @@ func (s *Service) trusted(r *http.Request) bool {
 	}
 	return false
 }
+
 // rawAddr is the TCP peer address Go itself observed, ignoring any client-supplied header. Unlike
 // sourceIP it cannot be spoofed by a request that merely originates from a trusted proxy's address
 // (loopback by default): it is what login rate-limiting keys on so that header spoofing cannot, by
 // itself, buy unlimited guesses.
-func (s *Service) rawAddr(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
+func (s *Service) rawAddr(r *http.Request) string { return apiutil.RemoteIP(r) }
 
 // sourceIP is the address attributed to a request for audit logging: behind a configured reverse
 // proxy (trusted()) it takes X-Real-IP, which the proxy is responsible for overwriting on every
@@ -322,16 +285,7 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	// reported IP catches the real client behind a proxy, and the username stops an attacker from
 	// defeating both by claiming a fresh IP on every attempt.
 	limitKeys := []string{"conn\x00" + s.rawAddr(r), "ip\x00" + s.sourceIP(r), "user\x00" + strings.ToLower(in.Username)}
-	s.mu.Lock()
-	blocked := false
-	for _, k := range limitKeys {
-		if len(s.recentLocked(k)) >= 5 {
-			blocked = true
-			break
-		}
-	}
-	s.mu.Unlock()
-	if blocked {
+	if s.limiter.Blocked(limitKeys...) {
 		apiutil.Fail(w, apiutil.Err(429, "rate_limited", "失败次数过多，请 5 分钟后重试"))
 		return
 	}
@@ -346,11 +300,7 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		hash = dummy
 	}
 	if !verify(in.Password, hash) || err == sql.ErrNoRows {
-		s.mu.Lock()
-		for _, k := range limitKeys {
-			s.failures[k] = append(s.failures[k], time.Now())
-		}
-		s.mu.Unlock()
+		s.limiter.Fail(limitKeys...)
 		if e := audit.Write(r.Context(), s.DB, audit.Event{Actor: in.Username, Action: "auth.login", Result: "failure", IP: s.sourceIP(r)}); e != nil {
 			apiutil.Fail(w, e)
 			return
@@ -377,11 +327,7 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		apiutil.Fail(w, err)
 		return
 	}
-	s.mu.Lock()
-	for _, k := range limitKeys {
-		delete(s.failures, k)
-	}
-	s.mu.Unlock()
+	s.limiter.Reset(limitKeys...)
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/api/admin/", HttpOnly: true, Secure: s.SecureCookie, SameSite: http.SameSiteStrictMode, Expires: p.Expires})
 	apiutil.JSON(w, 200, p)
 }

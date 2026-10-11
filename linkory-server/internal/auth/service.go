@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -21,6 +20,7 @@ import (
 	"golang.org/x/crypto/argon2"
 
 	"github.com/linkory/linkory-server/internal/apiutil"
+	"github.com/linkory/linkory-server/internal/ratelimit"
 )
 
 type Service struct {
@@ -38,12 +38,11 @@ type Service struct {
 	// change) so live connections can be dropped.
 	OnRevoke func(deviceIDs []string)
 
-	mu       sync.Mutex
-	failures map[string][]time.Time
+	limiter *ratelimit.Limiter
 }
 
 func NewService(db *sql.DB, secret []byte, access, refresh time.Duration) *Service {
-	return &Service{DB: db, Secret: secret, AccessTTL: access, RefreshTTL: refresh, RefreshGrace: 20 * time.Second, failures: map[string][]time.Time{}}
+	return &Service{DB: db, Secret: secret, AccessTTL: access, RefreshTTL: refresh, RefreshGrace: 20 * time.Second, limiter: ratelimit.New(ratelimit.DefaultWindow, ratelimit.DefaultMaxFailures)}
 }
 
 type DeviceInfo struct {
@@ -453,29 +452,9 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 	return &Principal{UserID: uid, DeviceID: did, SessionID: sid}, nil
 }
 
-func (s *Service) tooManyFailures(key string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.recent(key)) >= 5
-}
+func (s *Service) tooManyFailures(key string) bool { return s.limiter.Blocked(key) }
 
-func (s *Service) recordFailure(key string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.failures[key] = append(s.recent(key), time.Now())
-}
-
-func (s *Service) recent(key string) []time.Time {
-	cut := time.Now().Add(-5 * time.Minute)
-	var out []time.Time
-	for _, t := range s.failures[key] {
-		if t.After(cut) {
-			out = append(out, t)
-		}
-	}
-	s.failures[key] = out
-	return out
-}
+func (s *Service) recordFailure(key string) { s.limiter.Fail(key) }
 
 func randomToken() string {
 	b := make([]byte, 32)

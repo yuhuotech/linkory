@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"strings"
 
@@ -77,8 +76,7 @@ func (s *Service) Routes(mux *http.ServeMux) {
 			apiutil.Fail(w, err)
 			return
 		}
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-		t, err := s.Login(r.Context(), req.Username, req.Password, ip, req.Device)
+		t, err := s.Login(r.Context(), req.Username, req.Password, apiutil.RemoteIP(r), req.Device)
 		if err != nil {
 			apiutil.Fail(w, err)
 			return

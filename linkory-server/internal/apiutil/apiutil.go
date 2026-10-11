@@ -2,6 +2,7 @@ package apiutil
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 )
 
@@ -41,4 +42,14 @@ func Decode(r *http.Request, v any) error {
 		return Err(400, "bad_request", "invalid JSON body")
 	}
 	return nil
+}
+
+// RemoteIP is the TCP peer address Go itself observed, ignoring any client-supplied header, so it
+// cannot be spoofed. Use it as a rate-limit key; proxy-reported addresses are for audit only.
+func RemoteIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

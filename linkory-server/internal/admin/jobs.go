@@ -346,7 +346,7 @@ func (s *Service) Run(ctx context.Context) {
 			return
 		case <-cleanup.C:
 			s.QueueRetention(ctx)
-			s.pruneFailures()
+			s.limiter.Prune()
 			_, _ = s.DB.ExecContext(ctx, `DELETE FROM admin_sessions WHERE expires_at<UTC_TIMESTAMP(3)`)
 			_, _ = s.DB.ExecContext(ctx, `DELETE FROM admin_previews WHERE expires_at<UTC_TIMESTAMP(3)`)
 		case <-tick.C:

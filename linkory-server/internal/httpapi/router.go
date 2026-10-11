@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/subtle"
 	"database/sql"
-	"encoding/json"
 	"fmt"
+	"github.com/linkory/linkory-server/internal/apiutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -95,7 +95,7 @@ func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL
 		mux.Handle("GET "+prefix, webHandler(opt))
 		mux.HandleFunc("GET "+prefix+"web-config.json", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-cache")
-			writeJSON(w, http.StatusOK, map[string]any{"custom_server": opt.WebCustomServer})
+			apiutil.JSON(w, http.StatusOK, map[string]any{"custom_server": opt.WebCustomServer})
 		})
 		if prefix != "/" {
 			mux.Handle("GET "+strings.TrimSuffix(prefix, "/"), http.RedirectHandler(prefix, http.StatusMovedPermanently))
@@ -128,22 +128,16 @@ func NewRouter(db *sql.DB, authSvc *auth.Service, hub *messaging.Hub, offlineTTL
 		})
 	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
+		apiutil.JSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if db == nil || db.PingContext(ctx) != nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "db_unavailable"})
+			apiutil.JSON(w, http.StatusServiceUnavailable, map[string]string{"status": "db_unavailable"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		apiutil.JSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	return cors(opt.CORSOrigins, mux)
-}
-
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
 }
