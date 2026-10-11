@@ -183,6 +183,7 @@ class AppStore extends Notifier<AppState> {
     ref.onDispose(() {
       _evSub?.cancel();
       _stSub?.cancel();
+      _clearAlerts(); // a pending alert must not touch `ref` after disposal
     });
     final p = ref.read(prefsProvider);
     _savedPaths = _loadMap(p.getString('saved_paths'));
@@ -379,7 +380,7 @@ class AppStore extends Notifier<AppState> {
     _lanTimer?.cancel();
     unawaited(_lan?.close());
     _lan = null;
-    _alerts.clear();
+    _clearAlerts();
     state = AppState(
       saveDir: state.saveDir,
       transferMode: state.transferMode,
@@ -520,6 +521,13 @@ class AppStore extends Notifier<AppState> {
     prev?.timer.cancel();
     final n = (prev?.n ?? 0) + 1;
     _alerts[peerId] = (n: n, title: title, body: body, timer: Timer(_alertCoalesce, () => _flushAlert(peerId)));
+  }
+
+  void _clearAlerts() {
+    for (final a in _alerts.values) {
+      a.timer.cancel();
+    }
+    _alerts.clear();
   }
 
   void _flushAlert(String peerId) {
