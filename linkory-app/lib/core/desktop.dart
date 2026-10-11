@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dbus/dbus.dart';
@@ -10,6 +11,7 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../shared/close_dialog.dart';
+import 'log.dart';
 import 'notifications.dart';
 
 /// Windows and Linux draw their own minimise/maximise/close buttons (the title bar is hidden for a
@@ -301,6 +303,7 @@ class DesktopShell with TrayListener, WindowListener {
   @override
   void onWindowClose() async {
     var behavior = closeBehavior;
+    Log.info('quit', 'onWindowClose behavior=$behavior');
     if (behavior == 'tray' && !trayAvailable) {
       behavior = 'quit'; // never hide a window nobody can bring back
     }
@@ -330,10 +333,30 @@ class DesktopShell with TrayListener, WindowListener {
 
   bool _asking = false;
 
+  /// Quit: hide the window first so the user never watches the engine tear down, time each step
+  /// (logs/linkory.log, tag `quit`), and force the process out if teardown hangs.
   Future<void> quit() async {
-    await trayManager.destroy();
-    await windowManager.setPreventClose(false);
-    await windowManager.destroy();
+    final sw = Stopwatch()..start();
+    Future<void> step(String name, Future<void> Function() f) async {
+      final t = sw.elapsedMilliseconds;
+      try {
+        await f();
+        Log.info('quit', '$name ok +${sw.elapsedMilliseconds - t}ms (total ${sw.elapsedMilliseconds}ms)');
+      } catch (e) {
+        Log.warn('quit', '$name failed: $e');
+      }
+    }
+
+    Log.info('quit', 'begin');
+    await step('hide', windowManager.hide);
+    Timer(const Duration(seconds: 3), () {
+      Log.warn('quit', 'teardown still running after ${sw.elapsedMilliseconds}ms, exit(0)');
+      exit(0);
+    });
+    await step('tray.destroy', trayManager.destroy);
+    await step('preventClose.off', () => windowManager.setPreventClose(false));
+    await step('window.destroy', windowManager.destroy);
+    Log.info('quit', 'end ${sw.elapsedMilliseconds}ms');
   }
 
   @override
