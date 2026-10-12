@@ -150,7 +150,7 @@ void main() {
     final state = fixtureState();
     await pumpApp(t, state.copyWith(messages: {
       'win': [ChatMessage(clientId: 'chinese-clipboard', peerId: 'win', mine: false,
-        type: 'clipboard', content: '现在本地领先', createdAt: DateTime(2026, 10, 10))],
+        type: 'clipboard', content: '现在本地领先', createdAt: DateTime(2025, 3, 14, 10, 40))],
     }));
     final text = t.widget<Text>(find.text('现在本地领先'));
     expect(text.style!.fontFamilyFallback, contains('NotoSansSC'));
