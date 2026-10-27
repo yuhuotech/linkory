@@ -54,9 +54,11 @@ def render(size, mode='app'):
                 for sx in range(ss):
                     u, v = (x+(sx+.5)/ss)/size, (y+(sy+.5)/ss)/size
                     # Maskable/Android foreground keep all glyphs inside the safe zone.
-                    scale = .8 if mode == 'maskable' else .66 if mode == 'foreground' else 1.38 if mode in ('tray', 'tray_linux') else 1
+                    scale = .8 if mode == 'maskable' else .66 if mode == 'foreground' else 1.48 if mode in ('tray', 'tray_linux') else 1
                     gu, gv = (u-.5)/scale+.5, (v-.5)/scale+.5
-                    distance = min(abs(math.hypot(gu-cx, gv-cy)-r)-STROKE/2 for cx, cy, r in RINGS)
+                    # Bring the rings closer in the tray so they can grow without clipping.
+                    tray = mode in ('tray', 'tray_linux')
+                    distance = min(abs(math.hypot(gu-(.5+(cx-.5)*.8 if tray else cx), gv-cy)-r)-STROKE/2 for cx, cy, r in RINGS)
                     glyph = distance <= 0
                     qx, qy = abs(u-.5)-(.5-RADIUS), abs(v-.5)-(.5-RADIUS)
                     inside = math.hypot(max(qx, 0), max(qy, 0)) <= RADIUS
@@ -119,9 +121,9 @@ def main():
     base.mkdir(parents=True, exist_ok=True)
     for size in (16, 32, 64, 128, 256, 512, 1024):
         write(base / f'app_{size}.png', size)
-    # macOS template at 18pt with a 2x variant (DesktopShell selects @2x explicitly).
-    write(base / 'tray.png', 18, 'tray')
-    write(base / 'tray@2x.png', 36, 'tray')
+    # macOS template at 19pt with a 2x variant (DesktopShell selects @2x explicitly).
+    write(base / 'tray.png', 19, 'tray')
+    write(base / 'tray@2x.png', 38, 'tray')
     write(base / 'tray_linux.png', 64, 'tray_linux')
     ico(base / 'app.ico')
     if len(sys.argv) > 1:

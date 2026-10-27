@@ -140,6 +140,7 @@ class DesktopShell with TrayListener, WindowListener {
           ? 'assets/icons/tray@2x.png'
           : 'assets/icons/tray_linux.png',
       isTemplate: Platform.isMacOS, // adapts to light/dark menu bar
+      iconSize: 19, // macOS only; Linux sizes the icon according to the panel
     );
     if (!Platform.isLinux) await trayManager.setToolTip('连信 Linkory');
     await trayManager.setContextMenu(
