@@ -54,14 +54,15 @@ def render(size, mode='app'):
                 for sx in range(ss):
                     u, v = (x+(sx+.5)/ss)/size, (y+(sy+.5)/ss)/size
                     # Maskable/Android foreground keep all glyphs inside the safe zone.
-                    scale = .8 if mode == 'maskable' else .66 if mode == 'foreground' else 1/1.08 if mode == 'tray' else 1
+                    scale = .8 if mode == 'maskable' else .66 if mode == 'foreground' else 1.38 if mode in ('tray', 'tray_linux') else 1
                     gu, gv = (u-.5)/scale+.5, (v-.5)/scale+.5
                     distance = min(abs(math.hypot(gu-cx, gv-cy)-r)-STROKE/2 for cx, cy, r in RINGS)
                     glyph = distance <= 0
                     qx, qy = abs(u-.5)-(.5-RADIUS), abs(v-.5)-(.5-RADIUS)
                     inside = math.hypot(max(qx, 0), max(qy, 0)) <= RADIUS
-                    if mode in ('tray', 'foreground'):
-                        c = ((0, 0, 0, 255) if mode == 'tray' else (255, 255, 255, 255)) if glyph else (0, 0, 0, 0)
+                    if mode in ('tray', 'tray_linux', 'foreground'):
+                        color = (0, 0, 0, 255) if mode == 'tray' else (249, 115, 22, 255) if mode == 'tray_linux' else (255, 255, 255, 255)
+                        c = color if glyph else (0, 0, 0, 0)
                     elif inside or mode in ('opaque', 'maskable'):
                         if glyph:
                             t = max(0, min(1, (gv-.27)/.46))
@@ -121,6 +122,7 @@ def main():
     # macOS template at 18pt with a 2x variant (DesktopShell selects @2x explicitly).
     write(base / 'tray.png', 18, 'tray')
     write(base / 'tray@2x.png', 36, 'tray')
+    write(base / 'tray_linux.png', 64, 'tray_linux')
     ico(base / 'app.ico')
     if len(sys.argv) > 1:
         return

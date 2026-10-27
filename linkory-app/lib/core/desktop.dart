@@ -138,7 +138,7 @@ class DesktopShell with TrayListener, WindowListener {
           ? 'assets/icons/app.ico'
           : Platform.isMacOS
           ? 'assets/icons/tray@2x.png'
-          : 'assets/icons/app_32.png',
+          : 'assets/icons/tray_linux.png',
       isTemplate: Platform.isMacOS, // adapts to light/dark menu bar
     );
     if (!Platform.isLinux) await trayManager.setToolTip('连信 Linkory');
